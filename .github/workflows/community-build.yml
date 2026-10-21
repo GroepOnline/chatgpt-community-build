@@ -53,7 +53,7 @@ jobs:
             project-group-last-updated-sort project-task-sort read-aloud read-aloud-mcp remote-control-ui \
             shared-app-server-socket shallow-repository-watches start-minimized-to-tray tray-usage \
             ui-tweaks wayland-global-shortcuts | sort) "$RUNNER_TEMP/enabled-features.txt"
-          node --test scripts/lib/linux-features.test.js linux-features/ui-tweaks/test.js \
+          env -u CODEX_LINUX_FEATURES_CONFIG node --test scripts/lib/linux-features.test.js linux-features/ui-tweaks/test.js \
             scripts/patch-linux-window-ui.test.js scripts/patches/descriptor.test.js \
             scripts/patches/lib/global-shortcuts-portal.test.js scripts/patches/core/*/test.js \
             linux-features/*/test.js
