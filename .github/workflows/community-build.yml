@@ -37,6 +37,8 @@ jobs:
           git -C "$RUNNER_TEMP/codex-desktop-linux" fetch --depth=1 origin "$UPSTREAM_COMMIT"
           git -C "$RUNNER_TEMP/codex-desktop-linux" checkout --detach FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/codex-desktop-linux" rev-parse HEAD)" = "$UPSTREAM_COMMIT"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" apply --check "$GITHUB_WORKSPACE/patches/native-model-picker.patch"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" apply "$GITHUB_WORKSPACE/patches/native-model-picker.patch"
           cp .github/community-build/features.json "$RUNNER_TEMP/codex-desktop-linux/linux-features/features.json"
       - name: Validate manifest and run upstream feature tests
         working-directory: ${{ runner.temp }}/codex-desktop-linux
@@ -56,7 +58,7 @@ jobs:
           env -u CODEX_LINUX_FEATURES_CONFIG node --test scripts/lib/linux-features.test.js linux-features/ui-tweaks/test.js \
             scripts/patch-linux-window-ui.test.js scripts/patches/descriptor.test.js \
             scripts/patches/lib/global-shortcuts-portal.test.js scripts/patches/core/*/test.js \
-            linux-features/*/test.js
+            linux-features/*/test.js linux-features/ui-tweaks/model-picker-native.test.js
       - name: Resolve and verify official signed amd64 package
         id: upstream
         working-directory: ${{ runner.temp }}/codex-desktop-linux

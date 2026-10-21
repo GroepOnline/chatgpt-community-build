@@ -9,7 +9,14 @@ Community patches before creating a Debian package.
 The build is pinned to [`ilysenko/codex-desktop-linux` commit
 `cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec`](https://github.com/ilysenko/codex-desktop-linux/tree/cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec).
 That upstream project is distributed under the [MIT License](https://github.com/ilysenko/codex-desktop-linux/blob/cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec/LICENSE).
-This repository contains no upstream application source code. OpenAI software,
+The source patch in `patches/` adapts the optional model-list tweak to the
+26.1016.51333 native composer, whose inline model list and model-specific
+reasoning-effort catalog supersede the previous Community transforms. It
+changes both Chat and Work initial views and close/select resets atomically.
+Missing, duplicate or partially changed contracts fail closed; the build keeps
+critical patch enforcement enabled. Existing legacy feature tests are retained.
+The patch is applied to Community source before packaging; generated application
+bundles are not edited by hand. OpenAI software,
 product names, and marks remain subject to their own terms and licenses.
 
 The manifest preserves 28 documented Linux feature IDs and enables four

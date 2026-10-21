@@ -43,7 +43,8 @@
         },
         "modelPicker": {
           "showModelsByDefault": {
-            "enabled": true
+            "enabled": true,
+            "nativeComposer": true
           }
         },
         "selection": {

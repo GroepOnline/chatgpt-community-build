@@ -1,0 +1,213 @@
+diff --git a/linux-features/ui-tweaks/model-picker-native.test.js b/linux-features/ui-tweaks/model-picker-native.test.js
+new file mode 100644
+index 0000000..a458831
+--- /dev/null
++++ b/linux-features/ui-tweaks/model-picker-native.test.js
+@@ -0,0 +1,43 @@
++"use strict";
++const test = require("node:test");
++const assert = require("node:assert/strict");
++const { applyNativeAdvancedViewPatch: apply, REPLACEMENTS, NATIVE_CONTRACTS, descriptors } =
++  require("./patches/model-picker-native.js");
++const legacy = require("./patches/model-picker-model-list.js");
++const context = {feature: {settings: {tweaks: {modelPicker: {
++  showModelsByDefault: {enabled: true, nativeComposer: true},
++}}}}};
++const fixture = [...NATIVE_CONTRACTS,
++  ...REPLACEMENTS.flatMap(([before, , n]) => Array(n).fill(before)),
++  "keep model availability, permissions and effort validation"].join(";");
++
++test("native composer switches both initial states and every reopen reset atomically", () => {
++  const result = apply(fixture, context);
++  for (const [before, after, n] of REPLACEMENTS) {
++    assert.equal(result.includes(before), false);
++    assert.equal(result.split(after).length - 1, n);
++  }
++  for (const contract of NATIVE_CONTRACTS) assert.ok(result.includes(contract));
++  assert.ok(result.endsWith("keep model availability, permissions and effort validation"));
++  assert.equal(apply(result, context), result);
++});
++
++test("native composer refuses missing, duplicate and partially patched contracts", () => {
++  const warn = console.warn;
++  console.warn = () => {};
++  try {
++    for (const changed of [
++      fixture.replace(NATIVE_CONTRACTS[2], "unknown model list"),
++      fixture + NATIVE_CONTRACTS[0],
++      fixture.replace(REPLACEMENTS[0][0], REPLACEMENTS[0][1]),
++      fixture.replace(REPLACEMENTS[2][0], "otherSetter(`simple`)"),
++    ]) assert.equal(apply(changed, context), changed);
++  } finally { console.warn = warn; }
++});
++
++test("native mode replaces the legacy transformations only when explicitly selected", () => {
++  assert.ok(descriptors[0].enabled(context));
++  assert.ok(legacy.descriptors.every((d) => !d.enabled(context)));
++  assert.equal(descriptors[0].enabled({}), false);
++  assert.equal(apply(fixture, {}), fixture);
++});
+diff --git a/linux-features/ui-tweaks/patch.js b/linux-features/ui-tweaks/patch.js
+index 43f0a0a..5825b51 100644
+--- a/linux-features/ui-tweaks/patch.js
++++ b/linux-features/ui-tweaks/patch.js
+@@ -3,6 +3,7 @@
+ const sidebarProjectName = require("./patches/sidebar-project-name.js");
+ const uiFontSize = require("./patches/ui-font-size.js");
+ const modelPickerModelList = require("./patches/model-picker-model-list.js");
++const modelPickerNative = require("./patches/model-picker-native.js");
+ const reasoningEffortLabels = require("./patches/reasoning-effort-labels.js");
+ const dockIcon = require("./patches/dock-icon.js");
+ const suggestedPrompts = require("./patches/suggested-prompts.js");
+@@ -21,6 +22,7 @@ module.exports = {
+     sidebarProjectName,
+     uiFontSize,
+     modelPickerModelList,
++    modelPickerNative,
+     reasoningEffortLabels,
+     dockIcon,
+     suggestedPrompts,
+diff --git a/linux-features/ui-tweaks/patches/model-picker-model-list.js b/linux-features/ui-tweaks/patches/model-picker-model-list.js
+index 054ca35..5b5d5dd 100644
+--- a/linux-features/ui-tweaks/patches/model-picker-model-list.js
++++ b/linux-features/ui-tweaks/patches/model-picker-model-list.js
+@@ -1,5 +1,7 @@
+ "use strict";
+ 
++const { nativeComposerEnabled } = require("./model-picker-native.js");
++
+ const MODEL_PICKER_STATE_ASSET_PATTERN = /^app-initial-[^.]+\.js$/;
+ const MODEL_PICKER_INLINE_ASSET_PATTERN = MODEL_PICKER_STATE_ASSET_PATTERN;
+ const MODEL_PICKER_EFFORT_ASSET_PATTERN = MODEL_PICKER_STATE_ASSET_PATTERN;
+@@ -345,7 +347,7 @@ const descriptors = [
+     phase: "webview-asset",
+     order: 20_794,
+     ciPolicy: "optional",
+-    enabled,
++    enabled: (context) => enabled(context) && !nativeComposerEnabled(context),
+     pattern: MODEL_PICKER_STATE_ASSET_PATTERN,
+     missingDescription: "composer model picker state bundle",
+     skipDescription: "ui-tweaks model picker default advanced view patch",
+@@ -357,7 +359,7 @@ const descriptors = [
+     phase: "webview-asset",
+     order: 20_796,
+     ciPolicy: "optional",
+-    enabled,
++    enabled: (context) => enabled(context) && !nativeComposerEnabled(context),
+     pattern: MODEL_PICKER_INLINE_ASSET_PATTERN,
+     missingDescription: "composer model picker menu bundle",
+     skipDescription: "ui-tweaks model picker inline model list patch",
+@@ -369,7 +371,7 @@ const descriptors = [
+     phase: "webview-asset",
+     order: 20_797,
+     ciPolicy: "optional",
+-    enabled,
++    enabled: (context) => enabled(context) && !nativeComposerEnabled(context),
+     pattern: MODEL_PICKER_EFFORT_ASSET_PATTERN,
+     missingDescription: "composer model picker menu bundle",
+     skipDescription: "ui-tweaks dynamic supported reasoning efforts patch",
+diff --git a/linux-features/ui-tweaks/patches/model-picker-native.js b/linux-features/ui-tweaks/patches/model-picker-native.js
+new file mode 100644
+index 0000000..ff13c01
+--- /dev/null
++++ b/linux-features/ui-tweaks/patches/model-picker-native.js
+@@ -0,0 +1,64 @@
++"use strict";
++
++// Contract for the signed Linux 26.1016.51333 composer. It already renders a
++// native inline model list and derives efforts from supportedReasoningEfforts.
++// The older submenu/Power mapper transforms must not run on this architecture.
++function nativeComposerEnabled(context) {
++  return context?.feature?.settings?.tweaks?.modelPicker?.showModelsByDefault
++    ?.nativeComposer === true;
++}
++
++const REPLACEMENTS = [
++  ["[g,_]=(0,aG.useState)(`simple`)", "[g,_]=(0,aG.useState)(`advanced`)", 1],
++  ["[ue,de]=(0,HW.useState)(`simple`)", "[ue,de]=(0,HW.useState)(`advanced`)", 1],
++  ["_(`simple`)", "_(`advanced`)", 2],
++  ["de(`simple`)", "de(`advanced`)", 2],
++];
++const NATIVE_CONTRACTS = [
++  "`chatgpt-model-picker`",
++  "`composer.modelPicker.modelList.heading`",
++  "className:hU.ModelList,children:[c,He,Ue,Ge,G,Ke,u.extras]",
++  "n.supportedReasoningEfforts.filter(e=>_p(e.reasoningEffort)&&e.reasoningEffort!==`persistent`)",
++];
++
++function count(source, text) {
++  return source.split(text).length - 1;
++}
++
++function applyNativeAdvancedViewPatch(source, context = {}) {
++  if (!nativeComposerEnabled(context)) return source;
++  const native = typeof source === "string" &&
++    NATIVE_CONTRACTS.every((text) => count(source, text) === 1);
++  const current = native && REPLACEMENTS.every(([before, after, expected]) =>
++    count(source, before) === expected && count(source, after) === 0);
++  const applied = native && REPLACEMENTS.every(([before, after, expected]) =>
++    count(source, before) === 0 && count(source, after) === expected);
++  if (applied) return source;
++  if (!current) {
++    console.warn("WARN: Native composer model list/effort/state contract drifted; no model picker changes applied");
++    return source;
++  }
++  // Change both initial states and close/select resets atomically. Retain all
++  // model availability, access checks, effort validation and click handlers.
++  for (const [before, after] of REPLACEMENTS) source = source.replaceAll(before, after);
++  return source;
++}
++
++module.exports = {
++  nativeComposerEnabled,
++  applyNativeAdvancedViewPatch,
++  REPLACEMENTS,
++  NATIVE_CONTRACTS,
++  descriptors: [{
++    id: "model-picker-native-advanced-view",
++    phase: "webview-asset",
++    order: 20_798,
++    ciPolicy: "optional",
++    enabled: (context) => nativeComposerEnabled(context) &&
++      context?.feature?.settings?.tweaks?.modelPicker?.showModelsByDefault?.enabled !== false,
++    pattern: /^app-primary-[^.]+\.js$/,
++    missingDescription: "native composer model picker bundle",
++    skipDescription: "ui-tweaks native model picker default list",
++    apply: applyNativeAdvancedViewPatch,
++  }],
++};
+diff --git a/linux-features/ui-tweaks/test.js b/linux-features/ui-tweaks/test.js
+index 65fa93b..b6a29bc 100644
+--- a/linux-features/ui-tweaks/test.js
++++ b/linux-features/ui-tweaks/test.js
+@@ -264,6 +264,7 @@ test("ui-tweaks is discoverable and disabled until listed in features.json", ()
+           "webview-asset",
+           "optional",
+         ],
++        ["feature:ui-tweaks:model-picker-native-advanced-view", "webview-asset", "optional"],
+         ["feature:ui-tweaks:reasoning-effort-labels-english", "webview-asset", "optional"],
+         ["feature:ui-tweaks:appearance-dock-icon-main-process", "main-bundle", "optional"],
+         ["feature:ui-tweaks:appearance-dock-icon-settings-row", "webview-asset", "optional"],
+@@ -281,7 +282,7 @@ test("ui-tweaks is discoverable and disabled until listed in features.json", ()
+     const modelPickerDescriptors = descriptors.filter((descriptor) =>
+       descriptor.id.includes(":model-picker-"),
+     );
+-    assert.equal(modelPickerDescriptors.length, 3);
++    assert.equal(modelPickerDescriptors.length, 4);
+     assert.ok(
+       modelPickerDescriptors.every((descriptor) => typeof descriptor.enabled === "function"),
+     );
+@@ -897,9 +898,12 @@ test("feature settings override the tracked defaults through features.json", ()
+     assert.match(patched, /font-weight: 800 !important; color: red;/);
+     assert.ok(
+       descriptors
+-        .filter((candidate) => candidate.id.includes(":model-picker-"))
++        .filter((candidate) => candidate.id.includes(":model-picker-") &&
++          !candidate.id.endsWith(":model-picker-native-advanced-view"))
+         .every((candidate) => candidate.enabled({}) === true),
+     );
++    assert.equal(descriptors.find((candidate) =>
++      candidate.id.endsWith(":model-picker-native-advanced-view")).enabled({}), false);
+     const uiFontSizeDescriptor = descriptors.find((candidate) =>
+       candidate.id.endsWith(":extended-ui-font-size"),
+     );
