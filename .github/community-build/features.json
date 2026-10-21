@@ -1,0 +1,57 @@
+{
+  "enabled": [
+    "agent-workspace",
+    "api-key-model-visibility",
+    "api-key-service-tier",
+    "appshots",
+    "authored-message-visibility",
+    "automation-extensions",
+    "chatgpt-sidebar-separate-history",
+    "computer-use-linux",
+    "filesystem-root-follow-ups",
+    "global-dictation",
+    "linux-performance-workarounds",
+    "mcp-helper-reaper",
+    "model-picker-default-presets",
+    "node-repl-reaper",
+    "persistent-status-panel",
+    "pet-overlay",
+    "preferred-editor-file-links",
+    "project-group-last-updated-sort",
+    "project-task-sort",
+    "read-aloud",
+    "read-aloud-mcp",
+    "remote-control-ui",
+    "shared-app-server-socket",
+    "shallow-repository-watches",
+    "start-minimized-to-tray",
+    "tray-usage",
+    "ui-tweaks",
+    "wayland-global-shortcuts"
+  ],
+  "settings": {
+    "ui-tweaks": {
+      "tweaks": {
+        "appearance": {
+          "customFontInput": {
+            "enabled": true
+          },
+          "uiFontSize": {
+            "enabled": true,
+            "max": 24
+          }
+        },
+        "modelPicker": {
+          "showModelsByDefault": {
+            "enabled": true
+          }
+        },
+        "selection": {
+          "moreDetails": {
+            "enabled": true
+          }
+        }
+      }
+    }
+  }
+}

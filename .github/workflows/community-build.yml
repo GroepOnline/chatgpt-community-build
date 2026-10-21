@@ -1,0 +1,134 @@
+name: ChatGPT Community Linux build
+
+on:
+  push:
+    branches: [build/community-20261021]
+
+permissions:
+  contents: read
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout build recipe
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@56f84321dbccf38fb67ce29ab63e4754056677e0 # stable
+        with:
+          toolchain: stable
+      - name: Install package build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev gnupg patchelf
+      - name: Fetch pinned upstream source
+        env:
+          UPSTREAM_COMMIT: cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/codex-desktop-linux"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" fetch --depth=1 origin "$UPSTREAM_COMMIT"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/codex-desktop-linux" rev-parse HEAD)" = "$UPSTREAM_COMMIT"
+          cp .github/community-build/features.json "$RUNNER_TEMP/codex-desktop-linux/linux-features/features.json"
+      - name: Validate manifest and run upstream feature tests
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        env:
+          CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
+        run: |
+          set -euo pipefail
+          node scripts/lib/linux-features.js --enabled | LC_ALL=C sort > "$RUNNER_TEMP/enabled-features.txt"
+          diff -u <(printf '%s\n' \
+            agent-workspace api-key-model-visibility api-key-service-tier appshots authored-message-visibility \
+            automation-extensions chatgpt-sidebar-separate-history computer-use-linux filesystem-root-follow-ups \
+            global-dictation linux-performance-workarounds mcp-helper-reaper model-picker-default-presets \
+            node-repl-reaper persistent-status-panel pet-overlay preferred-editor-file-links \
+            project-group-last-updated-sort project-task-sort read-aloud read-aloud-mcp remote-control-ui \
+            shared-app-server-socket shallow-repository-watches start-minimized-to-tray tray-usage \
+            ui-tweaks wayland-global-shortcuts | sort) "$RUNNER_TEMP/enabled-features.txt"
+          node --test scripts/lib/linux-features.test.js linux-features/ui-tweaks/test.js \
+            scripts/patch-linux-window-ui.test.js scripts/patches/descriptor.test.js \
+            scripts/patches/lib/global-shortcuts-portal.test.js scripts/patches/core/*/test.js \
+            linux-features/*/test.js
+      - name: Resolve and verify official signed amd64 package
+        id: upstream
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        run: |
+          set -euo pipefail
+          mkdir -p upstream
+          package="$(node scripts/lib/upstream-linux-package.js \
+            --output-dir upstream/amd64 \
+            --metadata upstream/amd64.json \
+            --key-base64 assets/openai-codex-linux-repository-key.gpg.base64 \
+            --arch amd64)"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+      - name: Build app and native feature helpers
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        env:
+          CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
+          CODEX_TARGET_ARCH: amd64
+          PACKAGE_WITH_UPDATER: '0'
+          MAX_BUILD_THREADS: '2'
+          UPSTREAM_PACKAGE: ${{ steps.upstream.outputs.package }}
+        run: |
+          set -euo pipefail
+          make build-native-feature-helpers
+          make build-app UPSTREAM_DEB="$UPSTREAM_PACKAGE"
+      - name: Package and verify candidate
+        id: package
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        env:
+          CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
+          CODEX_TARGET_ARCH: amd64
+          PACKAGE_WITH_UPDATER: '0'
+          PACKAGE_VERSION: 2026.10.21.${{ github.run_number }}
+          MAX_BUILD_THREADS: '2'
+        run: |
+          set -euo pipefail
+          make deb
+          package="$(find dist -maxdepth 1 -type f -name 'codex-desktop_*_amd64.deb' -print -quit)"
+          test -n "$package"
+          test "$(dpkg-deb -f "$package" Package)" = codex-desktop
+          test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          test "$(dpkg-deb -f "$package" Version)" = "$PACKAGE_VERSION"
+          test "$(dpkg-deb -f "$package" Depends | grep -o 'codex-update-manager' || true)" = ''
+          output="$RUNNER_TEMP/community-build-artifact"
+          mkdir -p "$output"
+          cp "$package" "$output/"
+          cp upstream/amd64.json "$output/upstream-signed-metadata.json"
+          dpkg-deb --fsys-tarfile "$package" | tar -xOf - ./opt/codex-desktop/.codex-linux/build-info.json > "$output/build-info.json"
+          node - "$output/build-info.json" <<'NODE'
+          const fs = require('node:fs');
+          const info = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const expected = 'cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec';
+          const ids = [
+            'agent-workspace','api-key-model-visibility','api-key-service-tier','appshots','authored-message-visibility',
+            'automation-extensions','chatgpt-sidebar-separate-history','computer-use-linux','filesystem-root-follow-ups',
+            'global-dictation','linux-performance-workarounds','mcp-helper-reaper','model-picker-default-presets',
+            'node-repl-reaper','persistent-status-panel','pet-overlay','preferred-editor-file-links',
+            'project-group-last-updated-sort','project-task-sort','read-aloud','read-aloud-mcp','remote-control-ui',
+            'shared-app-server-socket','shallow-repository-watches','start-minimized-to-tray','tray-usage','ui-tweaks',
+            'wayland-global-shortcuts'
+          ];
+          if (info.source?.commit !== expected) throw new Error('package build-info source commit mismatch');
+          if (info.upstreamLinuxPackage?.architecture !== 'amd64') throw new Error('official package architecture mismatch');
+          const enabled = [...(info.linuxFeatures?.enabled ?? [])].sort();
+          if (JSON.stringify(enabled) !== JSON.stringify([...ids].sort())) throw new Error('packaged feature set mismatch');
+          NODE
+          cp "$GITHUB_WORKSPACE/.github/community-build/features.json" "$output/features.json"
+          (cd "$output" && sha256sum *.deb *.json > SHA256SUMS)
+          echo "artifact_dir=$output" >> "$GITHUB_OUTPUT"
+      - name: Upload one-day build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: codex-desktop-community-amd64-${{ github.run_number }}
+          path: ${{ steps.package.outputs.artifact_dir }}
+          retention-days: 1
+          if-no-files-found: error
