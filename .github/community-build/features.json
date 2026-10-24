@@ -1,6 +1,5 @@
 {
   "enabled": [
-    "account-switcher",
     "agent-workspace",
     "api-key-model-visibility",
     "api-key-service-tier",
@@ -37,7 +36,6 @@
     "record-and-replay",
     "remote-control-ui",
     "remote-mobile-control",
-    "shallow-repository-watches",
     "shared-app-server-socket",
     "start-minimized-to-tray",
     "tray-usage",

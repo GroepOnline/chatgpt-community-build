@@ -19,12 +19,16 @@ The patch is applied to Community source before packaging; generated application
 bundles are not edited by hand. OpenAI software,
 product names, and marks remain subject to their own terms and licenses.
 
-The manifest enables 43 of the 48 upstream Linux feature IDs. Five are
+The manifest enables 41 of the 48 upstream Linux feature IDs. Seven are
 excluded on purpose: `community-profile-isolation` conflicts with the enabled
 `shared-app-server-socket` and would split the intentionally shared
-`~/.codex` home; `flatpak-chrome-native-messaging`, `thorium-chrome-plugin`
-and `omarchy-theme` target runtimes that are not installed; and
-`nix-store-bundled-marketplace-permissions` applies to Nix builds only.
+`~/.codex` home; `account-switcher` conflicts with the enabled
+`shared-app-server-socket` because a shared CLI session could otherwise
+switch authentication while another client is working; `shallow-repository-watches`
+conflicts with the enabled `directory-only-working-tree-watch`, the functional
+successor for the working-tree watch route; `flatpak-chrome-native-messaging`,
+`thorium-chrome-plugin` and `omarchy-theme` target runtimes that are not installed;
+and `nix-store-bundled-marketplace-permissions` applies to Nix builds only.
 The `ui-tweaks` settings enable seven options: show model choices by default
 (native composer mode), allow UI font sizes up to 24 px, allow a custom font
 stack, restore the selected-text “More details” action, Ctrl+Enter annotation

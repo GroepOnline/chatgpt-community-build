@@ -49,6 +49,7 @@ jobs:
           node scripts/lib/linux-features.js --enabled | LC_ALL=C sort > "$RUNNER_TEMP/enabled-features.txt"
           diff -u <(jq -r '.enabled[]' "$GITHUB_WORKSPACE/.github/community-build/features.json" | LC_ALL=C sort) \
             "$RUNNER_TEMP/enabled-features.txt"
+          node scripts/lib/linux-features.js --enabled-feature-dirs0 > /dev/null
           jq -e --argjson retired "$(jq -c '.retired' linux-features/compatibility.json)" \
             --argjson aliases "$(jq -c '.aliases' linux-features/compatibility.json)" \
             '.enabled as $e | ($e - ($retired + ($aliases | keys))) | length == ($e | length)' \
