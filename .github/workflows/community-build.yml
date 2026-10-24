@@ -59,17 +59,26 @@ jobs:
             scripts/patch-linux-window-ui.test.js scripts/patches/descriptor.test.js \
             scripts/patches/lib/global-shortcuts-portal.test.js scripts/patches/core/*/test.js \
             linux-features/*/test.js linux-features/ui-tweaks/model-picker-native.test.js
-      - name: Resolve and verify official signed amd64 package
+      - name: Resolve pinned official amd64 package (26.1016, laatste bewezen groene combinatie)
         id: upstream
         working-directory: ${{ runner.temp }}/codex-desktop-linux
         run: |
           set -euo pipefail
-          mkdir -p upstream
-          package="$(node scripts/lib/upstream-linux-package.js \
-            --output-dir upstream/amd64 \
-            --metadata upstream/amd64.json \
-            --key-base64 assets/openai-codex-linux-repository-key.gpg.base64 \
-            --arch amd64)"
+          mkdir -p upstream/amd64
+          # Pin tot de 26.1021-patchport klaar is: de ondertekende Packages-index
+          # vermeldt alleen nog 26.1021.22027, maar de pool serves het immutable
+          # 26.1016-artifact nog (HEAD 200, cache-control immutable). Hash vastgesteld
+          # op 2026-10-24 door dit exacte pool-URL te downloaden en te hashen; zelfde
+          # URL+versie die de signatuurgeverifieerde resolver in groene run 39562804310
+          # (upstream cc4c4fd 'Repair official Linux 26.1016.51333 drift') gebruikte.
+          PINNED_VERSION=26.1016.51333
+          PINNED_SHA256=c79f7fd24fd7d8b6439942a97306c5613d8e049903d893f136a05bfed551dc8a
+          deb="upstream/amd64/chatgpt_${PINNED_VERSION}_amd64.deb"
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail \
+            -o "$deb" \
+            "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${PINNED_VERSION}_amd64.deb"
+          echo "${PINNED_SHA256}  ${deb}" | sha256sum -c -
+          package="$PWD/$deb"
           echo "package=$package" >> "$GITHUB_OUTPUT"
       - name: Build app and native feature helpers
         working-directory: ${{ runner.temp }}/codex-desktop-linux
