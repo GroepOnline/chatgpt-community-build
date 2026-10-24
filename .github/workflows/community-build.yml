@@ -78,6 +78,17 @@ jobs:
             -o "$deb" \
             "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${PINNED_VERSION}_amd64.deb"
           echo "${PINNED_SHA256}  ${deb}" | sha256sum -c -
+          cat > upstream/amd64.json <<META
+          {
+            "pinned": true,
+            "version": "${PINNED_VERSION}",
+            "architecture": "amd64",
+            "sha256": "${PINNED_SHA256}",
+            "size": 526740530,
+            "repositoryPath": "pool/main/c/chatgpt/chatgpt_${PINNED_VERSION}_amd64.deb",
+            "provenance": "vastgelegde pin tot de 26.1021-patchport; hash bepaald 2026-10-24 uit het officiële immutable pool-artifact dat groene run 39562804310 signatuurgeverifieerd gebruikte"
+          }
+          META
           package="$PWD/$deb"
           echo "package=$package" >> "$GITHUB_OUTPUT"
       - name: Build app and native feature helpers
