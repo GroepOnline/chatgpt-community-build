@@ -30,7 +30,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends dpkg-dev gnupg patchelf
       - name: Fetch pinned upstream source
         env:
-          UPSTREAM_COMMIT: cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec
+          UPSTREAM_COMMIT: 44ada0e53a3e67454c6ec9bfacb70e1991c3489b
         run: |
           set -euo pipefail
           git clone --no-checkout https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/codex-desktop-linux"
@@ -47,14 +47,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/lib/linux-features.js --enabled | LC_ALL=C sort > "$RUNNER_TEMP/enabled-features.txt"
-          diff -u <(printf '%s\n' \
-            agent-workspace api-key-model-visibility api-key-service-tier appshots authored-message-visibility \
-            automation-extensions chatgpt-sidebar-separate-history computer-use-linux filesystem-root-follow-ups \
-            global-dictation linux-performance-workarounds mcp-helper-reaper model-picker-default-presets \
-            node-repl-reaper persistent-status-panel pet-overlay preferred-editor-file-links \
-            project-group-last-updated-sort project-task-sort read-aloud read-aloud-mcp remote-control-ui \
-            shared-app-server-socket shallow-repository-watches start-minimized-to-tray tray-usage \
-            ui-tweaks wayland-global-shortcuts | sort) "$RUNNER_TEMP/enabled-features.txt"
+          diff -u <(jq -r '.enabled[]' "$GITHUB_WORKSPACE/.github/community-build/features.json" | LC_ALL=C sort) \
+            "$RUNNER_TEMP/enabled-features.txt"
+          jq -e --argjson retired "$(jq -c '.retired' linux-features/compatibility.json)" \
+            --argjson aliases "$(jq -c '.aliases' linux-features/compatibility.json)" \
+            '.enabled as $e | ($e - ($retired + ($aliases | keys))) | length == ($e | length)' \
+            "$GITHUB_WORKSPACE/.github/community-build/features.json" > /dev/null
           env -u CODEX_LINUX_FEATURES_CONFIG node --test scripts/lib/linux-features.test.js linux-features/ui-tweaks/test.js \
             scripts/patch-linux-window-ui.test.js scripts/patches/descriptor.test.js \
             scripts/patches/lib/global-shortcuts-portal.test.js scripts/patches/core/*/test.js \
@@ -90,10 +88,12 @@ jobs:
           CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
           CODEX_TARGET_ARCH: amd64
           PACKAGE_WITH_UPDATER: '0'
-          PACKAGE_VERSION: 2026.10.21.${{ github.run_number }}
           MAX_BUILD_THREADS: '2'
+          FEATURES_MANIFEST: ${{ github.workspace }}/.github/community-build/features.json
+          UPSTREAM_COMMIT: 44ada0e53a3e67454c6ec9bfacb70e1991c3489b
         run: |
           set -euo pipefail
+          export PACKAGE_VERSION="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
           make deb
           package="$(find dist -maxdepth 1 -type f -name 'codex-desktop_*_amd64.deb' -print -quit)"
           test -n "$package"
@@ -109,20 +109,11 @@ jobs:
           node - "$output/build-info.json" <<'NODE'
           const fs = require('node:fs');
           const info = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          const expected = 'cc4c4fd294b3a8d0581680b8cba0d3dabb8d21ec';
-          const ids = [
-            'agent-workspace','api-key-model-visibility','api-key-service-tier','appshots','authored-message-visibility',
-            'automation-extensions','chatgpt-sidebar-separate-history','computer-use-linux','filesystem-root-follow-ups',
-            'global-dictation','linux-performance-workarounds','mcp-helper-reaper','model-picker-default-presets',
-            'node-repl-reaper','persistent-status-panel','pet-overlay','preferred-editor-file-links',
-            'project-group-last-updated-sort','project-task-sort','read-aloud','read-aloud-mcp','remote-control-ui',
-            'shared-app-server-socket','shallow-repository-watches','start-minimized-to-tray','tray-usage','ui-tweaks',
-            'wayland-global-shortcuts'
-          ];
-          if (info.source?.commit !== expected) throw new Error('package build-info source commit mismatch');
+          const manifest = JSON.parse(fs.readFileSync(process.env.FEATURES_MANIFEST, 'utf8'));
+          if (info.source?.commit !== process.env.UPSTREAM_COMMIT) throw new Error('package build-info source commit mismatch');
           if (info.upstreamLinuxPackage?.architecture !== 'amd64') throw new Error('official package architecture mismatch');
           const enabled = [...(info.linuxFeatures?.enabled ?? [])].sort();
-          if (JSON.stringify(enabled) !== JSON.stringify([...ids].sort())) throw new Error('packaged feature set mismatch');
+          if (JSON.stringify(enabled) !== JSON.stringify([...manifest.enabled].sort())) throw new Error('packaged feature set mismatch');
           NODE
           cp "$GITHUB_WORKSPACE/.github/community-build/features.json" "$output/features.json"
           (cd "$output" && sha256sum *.deb *.json > SHA256SUMS)
