@@ -108,13 +108,13 @@ index 054ca35..5b5d5dd 100644
      skipDescription: "ui-tweaks dynamic supported reasoning efforts patch",
 diff --git a/linux-features/ui-tweaks/patches/model-picker-native.js b/linux-features/ui-tweaks/patches/model-picker-native.js
 new file mode 100644
-index 0000000..ff13c01
+index 0000000..6059a56
 --- /dev/null
 +++ b/linux-features/ui-tweaks/patches/model-picker-native.js
 @@ -0,0 +1,64 @@
 +"use strict";
 +
-+// Contract for the signed Linux 26.1016.51333 composer. It already renders a
++// Contract for the signed Linux 26.1021.22027 composer. It already renders a
 +// native inline model list and derives efforts from supportedReasoningEfforts.
 +// The older submenu/Power mapper transforms must not run on this architecture.
 +function nativeComposerEnabled(context) {
@@ -123,16 +123,16 @@ index 0000000..ff13c01
 +}
 +
 +const REPLACEMENTS = [
-+  ["[g,_]=(0,aG.useState)(`simple`)", "[g,_]=(0,aG.useState)(`advanced`)", 1],
-+  ["[ue,de]=(0,HW.useState)(`simple`)", "[ue,de]=(0,HW.useState)(`advanced`)", 1],
-+  ["_(`simple`)", "_(`advanced`)", 2],
-+  ["de(`simple`)", "de(`advanced`)", 2],
++  ["[_e,ve]=(0,D5.useState)(`simple`)", "[_e,ve]=(0,D5.useState)(`advanced`)", 1],
++  ["[h,g]=(0,e9.useState)(`simple`)", "[h,g]=(0,e9.useState)(`advanced`)", 1],
++  ["ve(`simple`)", "ve(`advanced`)", 2],
++  ["g(`simple`)", "g(`advanced`)", 2],
 +];
 +const NATIVE_CONTRACTS = [
 +  "`chatgpt-model-picker`",
 +  "`composer.modelPicker.modelList.heading`",
-+  "className:hU.ModelList,children:[c,He,Ue,Ge,G,Ke,u.extras]",
-+  "n.supportedReasoningEfforts.filter(e=>_p(e.reasoningEffort)&&e.reasoningEffort!==`persistent`)",
++  "className:Z8.ModelList,children:[l,ze,Be,He,We,Ge,Ke,d.extras]",
++  "n.supportedReasoningEfforts.filter(e=>Kbe(e.reasoningEffort)&&e.reasoningEffort!==`persistent`)",
 +];
 +
 +function count(source, text) {

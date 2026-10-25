@@ -4,12 +4,23 @@
     "api-key-model-visibility",
     "api-key-service-tier",
     "appshots",
+    "authenticated-proxy",
     "authored-message-visibility",
     "automation-extensions",
+    "browser-proxy",
+    "chatgpt-dil-markdown-fallback",
+    "chatgpt-dots-any-country",
     "chatgpt-sidebar-separate-history",
+    "chronicle-skysight",
+    "codex-micro",
+    "community-features-in-gui-settings",
     "computer-use-linux",
+    "copilot-reasoning-effort",
+    "directory-only-working-tree-watch",
     "filesystem-root-follow-ups",
+    "frameless-titlebar",
     "global-dictation",
+    "global-dictation-gnome",
     "linux-performance-workarounds",
     "mcp-helper-reaper",
     "model-picker-default-presets",
@@ -21,9 +32,11 @@
     "project-task-sort",
     "read-aloud",
     "read-aloud-mcp",
+    "reasoning-visibility",
+    "record-and-replay",
     "remote-control-ui",
+    "remote-mobile-control",
     "shared-app-server-socket",
-    "shallow-repository-watches",
     "start-minimized-to-tray",
     "tray-usage",
     "ui-tweaks",
@@ -36,9 +49,17 @@
           "customFontInput": {
             "enabled": true
           },
+          "dockIcon": {
+            "enabled": true
+          },
           "uiFontSize": {
             "enabled": true,
             "max": 24
+          }
+        },
+        "home": {
+          "suggestedPrompts": {
+            "enabled": true
           }
         },
         "modelPicker": {
@@ -48,6 +69,9 @@
           }
         },
         "selection": {
+          "annotationSubmit": {
+            "enabled": true
+          },
           "moreDetails": {
             "enabled": true
           }
