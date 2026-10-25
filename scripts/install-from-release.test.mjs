@@ -105,3 +105,17 @@ test('root-owned dpkg-repack output is transferred to the desktop user before va
     permissions<moved && moved<validation,'rollback ownership must be fixed before unprivileged inspection');
   assert.match(scriptText,/\[\[ -f "\$repacked" && ! -L "\$repacked" \]\]/);
 });
+
+test('candidate and rollback bytes are rechecked before dpkg and acceptance receipt is committed first',()=>{
+  const scriptText=readFileSync(script,'utf8');
+  const arm=scriptText.lastIndexOf('\nARMED=1\n');
+  const verify=scriptText.lastIndexOf('node "$ROOT/scripts/assemble-release.mjs" --mode verify');
+  const candidate=scriptText.lastIndexOf('sha256sum --check --quiet "$STATE/candidate.SHA256SUMS"');
+  const rollback=scriptText.lastIndexOf('sha256sum --check --quiet "$STATE/rollback.SHA256SUMS"');
+  const dpkg=scriptText.lastIndexOf('sudo -n dpkg -i "$DEB"');
+  assert.ok(verify>0 && verify<arm && candidate<arm && rollback<arm && arm<dpkg);
+  const receipt=scriptText.lastIndexOf('mv -f -- "$receipt_tmp"');
+  const accepted=scriptText.lastIndexOf('ACCEPTED=1');
+  assert.ok(receipt>dpkg && receipt<accepted);
+  assert.match(scriptText,/Cannot atomically commit acceptance receipt/);
+});
