@@ -58,6 +58,11 @@ endorsement.
 
 ## Runtime acceptance gate (required before promoting a build)
 
+The temporary 28-feature bisect in commit edd7f83 reproduced the same
+bootstrap failure, and the unpatched official app failed as well. The
+original 39-feature candidate from commit 8281242 has been restored;
+that restores build intent, **not** runtime acceptance.
+
 **Build CI is not a desktop boot test.** On 2026-10-25 the signed
 26.1021.22027 bundle, both with Community features and without patches,
 displayed only an idle app:// shell on the joep workstation (no chat
