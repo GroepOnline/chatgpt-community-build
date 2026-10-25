@@ -60,6 +60,33 @@ package metadata, feature manifest, and SHA-256 checksums as a one-day Actions
 artifact. The artifact is a temporary build output, not a release or an
 endorsement.
 
+## Zero-process installation preflight
+
+The official **ChatGPT** and **ChatGPT Community** share the upstream Codex
+profile. Before replacing a native package, close **every** official and
+Community ChatGPT window and any Codex CLI/app-server processes. Also stop
+bundled helpers and temporarily suspend any background Codex timers that may
+restart them. Leave ZCode and unrelated applications alone.
+
+Run the fail-closed local guard immediately before `sudo dpkg -i`:
+
+```bash
+node scripts/verify-desktop-quiescence.mjs
+```
+
+`PASS install_quiescence` is mandatory. A `BLOCK` means **do not install**:
+identify and gracefully terminate the remaining PID(s), then rerun. Never
+override upstream's `CODEX_INSTALL_ALLOW_RUNNING` guard. Staged builds and
+signature/checksum verification may run while the old app is open, but the
+**actual package swap** requires zero ChatGPT/Codex processes. Confirm the
+process-free condition again immediately before touching the package. Preserve
+both the previous .deb and a profile snapshot for rollback. After installing,
+start **only Community** and run the logged-in chat-webview gate below.
+
+This procedure follows the upstream README and
+`docs/troubleshooting.md` sections *The app does not launch*,
+*Official and custom apps interfere*, and *Updater is waiting*.
+
 ## Runtime acceptance gate (required before promoting a build)
 
 The temporary 28-feature bisect in commit edd7f83 reproduced the shell
