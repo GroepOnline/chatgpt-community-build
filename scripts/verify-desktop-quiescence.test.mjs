@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { matchesChatGptCodex, checkQuiescence, isDirectInvocation } from './verify-desktop-quiescence.mjs';
+import { matchesChatGptCodex, checkQuiescence, isDirectInvocation, scanOwnedDesktopProcesses } from './verify-desktop-quiescence.mjs';
 
 test('blocks both official and Community ChatGPT executables', () => {
   assert.equal(matchesChatGptCodex({comm:'ChatGPT',exe:'/usr/lib/chatgpt/ChatGPT'}),true);
@@ -66,4 +66,16 @@ test('a symlinked guard entrypoint still runs the CLI gate', () => {
   } finally {
     rmSync(root,{recursive:true,force:true});
   }
+});
+
+
+test('preflight cannot pass under root without a desktop user identity', () => {
+  assert.throws(() => scanOwnedDesktopProcesses('/proc', 0), /root.*desktop|desktop.*root/i);
+});
+
+test('launcher match requires an executable shell script position, not a random argument', () => {
+  assert.equal(matchesChatGptCodex({ comm:'nano', exe:'/usr/bin/nano', argv:['nano','/opt/codex-desktop/start.sh'] }), false);
+  assert.equal(matchesChatGptCodex({ comm:'bash', exe:'/usr/bin/bash', argv:['bash','-lc','echo /opt/codex-desktop/start.sh'] }), false);
+  assert.equal(matchesChatGptCodex({ comm:'bash', exe:'/usr/bin/bash', argv:['bash','/opt/codex-desktop/start.sh'] }), true);
+  assert.equal(matchesChatGptCodex({ comm:'bash', exe:'/usr/bin/bash', argv:['bash','-e','/opt/codex-desktop/start.sh'] }), true);
 });

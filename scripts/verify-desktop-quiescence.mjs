@@ -17,12 +17,22 @@ export function matchesChatGptCodex({ comm = '', exe = '', argv = [] } = {}) {
   if (/^(chatgpt|codex(?:$|-)|gpt(?:$|-))/.test(basename)) return true;
   if (DESKTOP_ROOTS.some(root => executable.startsWith(root))) return true;
   if (DESKTOP_ROOTS.some(root => firstArg.startsWith(root))) return true;
-  return argv.slice(0, 3).some(arg => LAUNCHERS.has(arg));
+  // A shell executing a launcher is a blocker. Opening it in an editor
+  // or merely mentioning the launcher path is not execution.
+  if (!/\/(?:bash|sh)$/.test(firstArg) && firstArg !== 'bash' && firstArg !== 'sh') return false;
+  let scriptIndex = 1;
+  while (['-l', '--login', '-e', '-u', '-eu', '-ue', '-le'].includes(argv[scriptIndex])) scriptIndex++;
+  return LAUNCHERS.has(argv[scriptIndex]);
 }
 
 export function scanOwnedDesktopProcesses(proc = '/proc', uid = process.getuid?.()) {
   if (!Number.isInteger(uid)) {
     throw new Error('The owner UID could not be determined');
+  }
+  // Running under sudo previously scanned UID 0 and could incorrectly report
+  // PASS while the desktop user's shared profile was still in use.
+  if (uid === 0) {
+    throw new Error('Refusing root execution: run desktop quiescence guard as the desktop user, without sudo');
   }
   const matches = [];
   for (const name of readdirSync(proc)) {
