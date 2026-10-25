@@ -10,5 +10,3 @@ permissions:
 jobs:
   ui-showcase:
     uses: GroepOnline/design-system/.github/workflows/ui-showcase-reusable.yml@7a4335a2d51b2ea85c100a99a522f22d1290463f
-    with:
-      runner_label: ubuntu-latest
