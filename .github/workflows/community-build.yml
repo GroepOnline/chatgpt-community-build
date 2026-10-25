@@ -27,7 +27,10 @@ jobs:
         with:
           node-version: 24
       - name: Verify runtime acceptance contract
-        run: node --test scripts/check-chat-boot.test.mjs scripts/verify-desktop-quiescence.test.mjs
+        run: |
+          node --test scripts/check-chat-boot.test.mjs scripts/verify-desktop-quiescence.test.mjs scripts/assemble-release.test.mjs
+          bash -n scripts/install-from-release.sh
+          node --check scripts/stop-chatgpt-desktop.mjs
   build:
     if: github.event_name == 'push'
     needs: verify-runtime-gate
