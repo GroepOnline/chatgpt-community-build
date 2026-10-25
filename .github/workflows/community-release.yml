@@ -69,6 +69,7 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/build/community-20261021" --jq '.object.sha')"
           [[ "$sha" == "$head" ]] || { echo 'Stale build: branch advanced; refusing release'; exit 1; }
+          [[ "$(git rev-parse HEAD)" == "$sha" ]] || { echo 'Checked-out release recipe differs from build SHA'; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "run_number=$(jq -r '.run_number' "$RUNNER_TEMP/run.json")" >> "$GITHUB_OUTPUT"
       - name: Fetch and verify both build artifacts
@@ -104,6 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ steps.bundle.outputs.tag }}"
+          latest="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/build/community-20261021" --jq '.object.sha')"
+          [[ "$latest" == "${{ steps.source.outputs.sha }}" ]] || { echo 'Branch changed during artifact verification'; exit 1; }
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'Release already exists: refusing to overwrite public assets.'
             exit 1
