@@ -1,0 +1,154 @@
+name: ChatGPT Community Linux release
+
+on:
+  workflow_run:
+    workflows: ["ChatGPT Community Linux build"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Successful trusted-branch build workflow run ID"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-release-${{ github.event.workflow_run.id || inputs.build_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: verified Community prerelease
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'build/community-20261021' &&
+       github.event.workflow_run.repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/build/community-20261021')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ github.event.workflow_run.id || inputs.build_run_id }}
+    steps:
+      - name: Checkout trusted release recipe
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Test release tooling
+        run: |
+          set -euo pipefail
+          node --test scripts/assemble-release.test.mjs scripts/assemble-release.integration.test.mjs scripts/install-from-release.test.mjs scripts/release-policy.test.mjs
+          bash -n scripts/install-from-release.sh
+          node --check scripts/stop-chatgpt-desktop.mjs
+      - name: Verify successful build on current trusted branch
+        id: source
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${BUILD_RUN_ID}" > "$RUNNER_TEMP/run.json"
+          jq -e --arg repo "$GITHUB_REPOSITORY" '
+            .repository.full_name == $repo and
+            .name == "ChatGPT Community Linux build" and
+            .event == "push" and
+            .head_branch == "build/community-20261021" and
+            .status == "completed" and .conclusion == "success"
+          ' "$RUNNER_TEMP/run.json" > /dev/null
+          sha="$(jq -r '.head_sha' "$RUNNER_TEMP/run.json")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/build/community-20261021" --jq '.object.sha')"
+          [[ "$sha" == "$head" ]] || { echo 'Stale build: branch advanced; refusing release'; exit 1; }
+          [[ "$(git rev-parse HEAD)" == "$sha" ]] || { echo 'Checked-out release recipe differs from build SHA'; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "run_number=$(jq -r '.run_number' "$RUNNER_TEMP/run.json")" >> "$GITHUB_OUTPUT"
+      - name: Fetch and verify both build artifacts
+        run: |
+          set -euo pipefail
+          number="${{ steps.source.outputs.run_number }}"
+          [[ "$number" =~ ^[0-9]+$ ]]
+          for arch in amd64 arm64; do
+            mkdir -p "$RUNNER_TEMP/input/$arch"
+            gh run download "$BUILD_RUN_ID" \
+              -R "$GITHUB_REPOSITORY" \
+              -n "codex-desktop-community-${arch}-${number}" \
+              -D "$RUNNER_TEMP/input/$arch"
+            (cd "$RUNNER_TEMP/input/$arch" && sha256sum -c SHA256SUMS)
+          done
+      - name: Verify and assemble release bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          node scripts/assemble-release.mjs \
+            --mode assemble \
+            --amd64-dir "$RUNNER_TEMP/input/amd64" \
+            --arm64-dir "$RUNNER_TEMP/input/arm64" \
+            --output-dir "$RUNNER_TEMP/release" \
+            --run-id "$BUILD_RUN_ID" \
+            --run-number "${{ steps.source.outputs.run_number }}" \
+            --run-sha "${{ steps.source.outputs.sha }}"
+          (cd "$RUNNER_TEMP/release" && sha256sum -c SHA256SUMS)
+          tag="$(jq -r '.tag' "$RUNNER_TEMP/release/release-metadata.json")"
+          [[ "$tag" =~ ^community-v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Save verified release draft; publish only with redistribution rights
+        run: |
+          set -euo pipefail
+          tag="${{ steps.bundle.outputs.tag }}"
+          latest="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/build/community-20261021" --jq '.object.sha')"
+          [[ "$latest" == "${{ steps.source.outputs.sha }}" ]] || { echo 'Branch changed during artifact verification'; exit 1; }
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+            [[ "$is_draft" == true ]] || { echo 'Existing published tag cannot be overwritten'; exit 1; }
+            # Repair only a draft with exactly the same verified provenance.
+            # Never delete an unrelated draft, and never overwrite an asset.
+            mkdir -p "$RUNNER_TEMP/draft-existing"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" -D "$RUNNER_TEMP/draft-existing"
+            [[ -f "$RUNNER_TEMP/draft-existing/release-metadata.json" ]] ||
+              { echo 'Draft lacks verifiable provenance; manual reconciliation required'; exit 1; }
+            cmp -s "$RUNNER_TEMP/draft-existing/release-metadata.json" \
+              "$RUNNER_TEMP/release/release-metadata.json" ||
+              { echo 'Draft build identity differs; no recovery allowed'; exit 1; }
+            for existing in "$RUNNER_TEMP/draft-existing/"*; do
+              name="${existing##*/}"
+              [[ -f "$RUNNER_TEMP/release/$name" ]] &&
+                cmp -s "$existing" "$RUNNER_TEMP/release/$name" ||
+                { echo "Draft asset mismatches verified build: $name"; exit 1; }
+            done
+            for asset in "$RUNNER_TEMP/release/"*; do
+              name="${asset##*/}"
+              if [[ ! -f "$RUNNER_TEMP/draft-existing/$name" ]]; then
+                gh release upload "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+              fi
+            done
+            echo 'RESUMED verified owned draft, no destructive deletes or overwrites'
+          else
+            gh release create "$tag" "$RUNNER_TEMP/release/"* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "${{ steps.source.outputs.sha }}" \
+              --title "ChatGPT Community Linux ${tag#community-v}" \
+              --notes-file "$RUNNER_TEMP/release/RELEASE_NOTES.md" \
+              --draft --prerelease
+          fi
+          expected="$(find "$RUNNER_TEMP/release" -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          actual="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
+          [[ "$expected" == "$actual" ]] || { echo 'Incomplete release: draft kept; refused publication'; exit 1; }
+          # The Community .deb contains proprietary OpenAI software. A public repo
+          # does not grant redistribution rights. Keep a GitHub draft (write-access
+          # only) unless an administrator has verified an explicit license.
+          if [[ "${{ vars.COMMUNITY_BINARY_REDISTRIBUTION_AUTHORIZED }}" != "true" ]]; then
+            echo "DRAFT_READY: package assets retained for repository writers; public distribution on HOLD"
+            exit 0
+          fi
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          echo "PUBLISHED https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
