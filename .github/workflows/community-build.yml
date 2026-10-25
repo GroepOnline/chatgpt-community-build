@@ -28,7 +28,7 @@ jobs:
           node-version: 24
       - name: Verify runtime acceptance contract
         run: |
-          node --test scripts/check-chat-boot.test.mjs scripts/verify-desktop-quiescence.test.mjs scripts/assemble-release.test.mjs scripts/install-from-release.test.mjs
+          node --test scripts/check-chat-boot.test.mjs scripts/verify-desktop-quiescence.test.mjs scripts/assemble-release.test.mjs scripts/install-from-release.test.mjs scripts/release-policy.test.mjs
           bash -n scripts/install-from-release.sh
           node --check scripts/stop-chatgpt-desktop.mjs
   build:
