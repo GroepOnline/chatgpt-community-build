@@ -68,7 +68,7 @@ Community ChatGPT window and any Codex CLI/app-server processes. Also stop
 bundled helpers and temporarily suspend any background Codex timers that may
 restart them. Leave ZCode and unrelated applications alone.
 
-Run the fail-closed local guard immediately before `sudo dpkg -i`:
+Run the fail-closed local guard as the logged-in desktop user (without sudo) immediately before `sudo dpkg -i`:
 
 ```bash
 node scripts/verify-desktop-quiescence.mjs
