@@ -22,16 +22,19 @@ public download assets, not an Actions artifact that expires.
    official upstream version and source commit, and the **38** compatible
    enabled Community feature IDs. The incompatible shared-app-server-socket
    feature must not reappear.
-6. Publication creates an immutable-by-policy **draft** first. Only after
-   checking that all asset names exist does it publish as a public **prerelease**,
-   with a deterministic tag such as community-v2026.10.25.26.
+6. Publication creates a checked **draft release** with a deterministic tag
+   such as community-v2026.10.25.26. The proprietary OpenAI binary is not
+   publicly redistributed by default. Publication as a public prerelease
+   additionally requires documented redistribution rights and the explicit
+   repository variable COMMUNITY_BINARY_REDISTRIBUTION_AUTHORIZED=true.
 7. Release assets: both .deb packages, per-architecture build information and
    signed-upstream metadata, features.json, release-metadata.json,
    RELEASE_NOTES.md, and combined SHA256SUMS. The metadata labels
    runtimeAccepted=false. Build CI is not a desktop login test.
 
-If a published tag already exists, publication refuses to overwrite it.
-On a partial upload, the release stays draft; no false acceptance.
+If any release tag (including a draft) already exists, the workflow refuses
+ to overwrite it. On a partial upload, the release stays draft; no false acceptance.
+ Draft releases are visible only to authorized repository writers.
 
 The optional workflow_dispatch path requires a specific previously successful
 build-run ID and applies the *same* trust checks. It cannot publish from an
@@ -42,8 +45,9 @@ arbitrary fork or build branch.
 **No laptop access, install, service, or update has been performed by this
 release flow.** The laptop can stay offline while GitHub builds/releases.
 
-After reconnecting, with GitHub CLI, Node.js 22+, and the local repository
-checkout available, first stage a public prerelease:
+After reconnecting, with an authenticated GitHub CLI account that has write
+access to the repository, Node.js 22+, and the local checkout available, first
+stage a **draft** (or, if licensed, public prerelease):
 
     bash scripts/install-from-release.sh --stage
 
