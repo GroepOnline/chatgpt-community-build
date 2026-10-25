@@ -19,12 +19,16 @@ The patch is applied to Community source before packaging; generated application
 bundles are not edited by hand. OpenAI software,
 product names, and marks remain subject to their own terms and licenses.
 
-The manifest enables 39 of the 48 upstream Linux feature IDs. Nine are
-excluded on purpose: `community-profile-isolation` conflicts with the enabled
-`shared-app-server-socket` and would split the intentionally shared
-`~/.codex` home; `account-switcher` conflicts with the enabled
-`shared-app-server-socket` because a shared CLI session could otherwise
-switch authentication while another client is working; `shallow-repository-watches`
+The manifest enables 38 of the 48 upstream Linux feature IDs. Ten are
+excluded on purpose: `community-profile-isolation` would split the deliberately
+shared `~/.codex` home; `account-switcher` could change the shared session
+authentication while another client is working; `shared-app-server-socket`
+is incompatible with the bundled 0.164.0-alpha.11.1 CLI: its launcher hook
+switches the app-server connection into UNIX-socket proxy mode, where the
+desktop's initialization never completes. The same extracted 26.1021.22027
+Community binary initializes successfully when only that hook is disabled.
+Keep it excluded until a protocol-compatible implementation has been
+tested end-to-end; `shallow-repository-watches`
 conflicts with the enabled `directory-only-working-tree-watch`, the functional
 successor for the working-tree watch route; `community-features-in-gui-settings`
 cannot apply to the 26.1021.22027 bundle because its native General settings
@@ -58,10 +62,14 @@ endorsement.
 
 ## Runtime acceptance gate (required before promoting a build)
 
-The temporary 28-feature bisect in commit edd7f83 reproduced the same
-bootstrap failure, and the unpatched official app failed as well. The
-original 39-feature candidate from commit 8281242 has been restored;
-that restores build intent, **not** runtime acceptance.
+The temporary 28-feature bisect in commit edd7f83 reproduced the shell
+failure because it still contained the shared app-server bridge. On
+2026-10-25 a one-variable headless comparison reproduced the stalled
+0.164.0 app-server with the bridge hook enabled and confirmed successful
+initialization with that hook disabled; the same unpatched official
+26.1021.22027 application also initialized. The manifest now excludes
+the incompatible bridge and must still pass the authenticated chat
+webview gate on the laptop before release acceptance.
 
 **Build CI is not a desktop boot test.** On 2026-10-25 the signed
 26.1021.22027 bundle, both with Community features and without patches,
@@ -78,7 +86,7 @@ Community app with a dedicated local CDP port (for example 9223) and run:
 This probe requires Node.js 22+ for the built-in WebSocket client; older
 Node versions fail with an explicit capability error.
 
-This command probes 127.0.0.1 only, requires an app:// desktop shell,
+This command probes IPv4 and IPv6 loopback (127.0.0.1 and ::1) only, requires an app:// desktop shell,
 and checks Codex runtime identity markers plus the primary UI webviews.
 CDP target discovery reads URL metadata to identify the app shell, but the
 probe never stores or prints those URLs, chat messages, tokens, or account

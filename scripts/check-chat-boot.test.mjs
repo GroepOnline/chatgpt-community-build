@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { classify, inspectShell, isLocalDebuggerUrl, isPrimaryShellTarget, parseArgs } from './check-chat-boot.mjs';
+import { classify, fetchLocalTargets, inspectShell, isLocalDebuggerUrl, isPrimaryShellTarget, parseArgs } from './check-chat-boot.mjs';
 
 const shell = { id: 'primary', type: 'page', url: 'app://-/index.html' };
 const overlay = { id: 'overlay', type: 'page', url: 'app://-/overlay.html' };
@@ -68,6 +68,9 @@ test('CDP evaluation errors fail closed', () => {
 
 test('debugging endpoints must be local and bound to the selected port', () => {
   assert.equal(isLocalDebuggerUrl('ws://127.0.0.1:9223/devtools/page/a', 9223), true);
+  assert.equal(isLocalDebuggerUrl('ws://[::1]:9223/devtools/page/a', 9223), true);
+  assert.equal(isLocalDebuggerUrl('ws://[::1]:9224/devtools/page/a', 9223), false);
+  assert.equal(isLocalDebuggerUrl('ws://[::2]:9223/devtools/page/a', 9223), false);
   assert.equal(isLocalDebuggerUrl('ws://localhost:9223/devtools/page/a', 9223), true);
   assert.equal(isLocalDebuggerUrl('ws://127.0.0.1:9224/devtools/page/a', 9223), false);
   assert.equal(isLocalDebuggerUrl('ws://example.com:9223/devtools/page/a', 9223), false);
@@ -112,4 +115,68 @@ test('strict numeric argument parsing', () => {
   assert.throws(() => parseArgs(['--timeout', '0']));
   assert.throws(() => parseArgs(['--interval-ms', '20']));
   assert.throws(() => parseArgs(['--bogus', '100']));
+});
+
+
+test('CDP loopback lookup falls back to IPv6 after IPv4 is unavailable', async () => {
+  const calls = [];
+  const targets = [{ id: 'primary', type: 'page', url: 'app://-/index.html' }];
+  const got = await fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    if (url.includes('127.0.0.1')) throw new TypeError('fetch failed');
+    return { ok: true, json: async () => targets };
+  });
+  assert.deepEqual(got, targets);
+  assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list', 'http://[::1]:9223/json/list']);
+});
+
+test('CDP loopback lookup uses IPv4 when it has the actual ChatGPT shell', async () => {
+  const calls = [];
+  const shellTargets = [{ id: 'primary', type: 'page', url: 'app://-/index.html' }];
+  const got = await fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    return { ok: true, json: async () => shellTargets };
+  });
+  assert.deepEqual(got, shellTargets);
+  assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list']);
+});
+
+test('CDP loopback lookup also checks IPv6 when IPv4 returns an empty target list', async () => {
+  const calls = [];
+  const shellTargets = [{ id: 'primary', type: 'page', url: 'app://-/index.html' }];
+  const got = await fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    return { ok: true, json: async () => url.includes('127.0.0.1') ? [] : shellTargets };
+  });
+  assert.deepEqual(got, shellTargets);
+  assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list', 'http://[::1]:9223/json/list']);
+});
+
+test('CDP loopback lookup returns no shell only after checking both interfaces', async () => {
+  const calls = [];
+  const got = await fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    return { ok: true, json: async () => [] };
+  });
+  assert.deepEqual(got, []);
+  assert.equal(calls.length, 2);
+});
+
+test('CDP loopback lookup fails if both local debuggers return invalid results', async () => {
+  const calls = [];
+  await assert.rejects(fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    return { ok: true, json: async () => ({ fake: true }) };
+  }), /unexpected_cdp_target_list/);
+  assert.equal(calls.length, 2);
+});
+
+
+test('pinned 0.164.0 desktop build excludes the incompatible shared app-server socket bridge', async () => {
+  // The 26.1021.22027 bundle stalls before app-server initialize with this hook.
+  // Only remove this guard after a new upstream backend has passed live chat boot.
+  const { readFileSync } = await import('node:fs');
+  const manifest = JSON.parse(readFileSync(new URL('../.github/community-build/features.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.enabled.includes('shared-app-server-socket'), false);
+  assert.equal(manifest.enabled.length, 38);
 });
