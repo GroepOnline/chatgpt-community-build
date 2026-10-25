@@ -122,7 +122,7 @@ function assemble(o) {
   writeFileSync(join(out,'release-metadata.json'),JSON.stringify(meta,null,2)+'\n');
   const notes=[
     '# ChatGPT Community Linux '+a.version,'',
-    'Automated prerelease from a successful trusted-branch CI build.',
+    'Verified GitHub release draft from a trusted-branch build. Public publication requires verified redistribution rights.',
     'Architectures: amd64 and arm64. Enabled Community features: 38.',
     'Official signed upstream package: 26.1021.22027.',
     'Build commit: '+sha,
