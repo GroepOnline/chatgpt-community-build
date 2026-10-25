@@ -170,3 +170,13 @@ test('CDP loopback lookup fails if both local debuggers return invalid results',
   }), /unexpected_cdp_target_list/);
   assert.equal(calls.length, 2);
 });
+
+
+test('pinned 0.164.0 desktop build excludes the incompatible shared app-server socket bridge', async () => {
+  // The 26.1021.22027 bundle stalls before app-server initialize with this hook.
+  // Only remove this guard after a new upstream backend has passed live chat boot.
+  const { readFileSync } = await import('node:fs');
+  const manifest = JSON.parse(readFileSync(new URL('../.github/community-build/features.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.enabled.includes('shared-app-server-socket'), false);
+  assert.equal(manifest.enabled.length, 38);
+});
