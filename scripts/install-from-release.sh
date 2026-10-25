@@ -10,6 +10,7 @@ ROLLBACK_ARG=""
 STATE=""
 ARMED=0
 ACCEPTED=0
+STOPPED=0
 TIMER_STOPPED=0
 ROLLBACK=""
 ARCH=""
@@ -166,13 +167,28 @@ clean_up() {
           cp -a "$STATE/snapshot/config.toml" "$HOME/.codex/config.toml"
         [[ -f "$STATE/snapshot/auth.json" ]] &&
           cp -a "$STATE/snapshot/auth.json" "$HOME/.codex/auth.json"
-        start_community && boot_gate
-        echo 'ROLLBACK_VERIFIED: previous package and profile recovered' >&2
+        if start_community && boot_gate; then
+          echo 'ROLLBACK_VERIFIED: previous package and profile recovered' >&2
+        else
+          echo 'ROLLBACK_INCOMPLETE: old package restored but chat boot gate failed' >&2
+        fi
       else
         echo 'ROLLBACK_FAILED: restore previous DEB manually from private backup' >&2
       fi
     else
       echo 'ROLLBACK_BLOCKED: processes still active; previous DEB retained' >&2
+    fi
+  fi
+  if [[ "$ARMED" != 1 && "$STOPPED" == 1 && "$ACCEPTED" != 1 ]]; then
+    # A pre-dpkg refusal must not leave the working app unnecessarily closed.
+    if node "$ROOT/scripts/verify-desktop-quiescence.mjs"; then
+      if start_community && boot_gate; then
+        echo 'OLD_SESSION_RESTARTED: package was never changed' >&2
+      else
+        echo 'OLD_SESSION_RESTART_FAILED: manual login may be needed' >&2
+      fi
+    else
+      echo 'OLD_SESSION_RESTART_BLOCKED: active helpers remain' >&2
     fi
   fi
   if [[ "$TIMER_STOPPED" == 1 ]]; then
@@ -189,6 +205,7 @@ if systemctl --user is-active --quiet codex-memory-r2.timer 2>/dev/null; then
   systemctl --user stop codex-memory-r2.timer
   TIMER_STOPPED=1
 fi
+STOPPED=1
 node "$ROOT/scripts/stop-chatgpt-desktop.mjs" --close ||
   die 'ChatGPT/Codex processes failed to stop'
 node "$ROOT/scripts/verify-desktop-quiescence.mjs" ||
