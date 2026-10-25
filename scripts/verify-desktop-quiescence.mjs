@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Fail-closed package replacement gate. Read process identity, not ps/grep text.
-import { readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, readlinkSync, statSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const DESKTOP_ROOTS = ['/opt/codex-desktop/', '/usr/lib/chatgpt/'];
 const LAUNCHERS = new Set([
@@ -71,7 +71,16 @@ export function checkQuiescence(scan = scanOwnedDesktopProcesses) {
   return { ok: true, count: 0, processes: [] };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+export function isDirectInvocation(entrypoint, moduleUrl = import.meta.url) {
+  if (!entrypoint) return false;
+  try {
+    return realpathSync(resolve(entrypoint)) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation(process.argv[1])) {
   try {
     const result = checkQuiescence();
     if (result.ok) {
