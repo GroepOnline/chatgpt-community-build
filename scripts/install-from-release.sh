@@ -44,10 +44,10 @@ ARCH="$(dpkg --print-architecture)"
 
 if [[ -z "$TAG" ]]; then
   TAG="$(gh release list -R "$REPO" --limit 30 --json tagName,isPrerelease,isDraft \
-    --jq '[.[] | select(.isPrerelease and (.isDraft | not) and (.tagName | startswith("community-v")))] | .[0].tagName' || true)"
+    --jq '[.[] | select((.isDraft or .isPrerelease) and (.tagName | startswith("community-v")))] | .[0].tagName' || true)"
 fi
 [[ "$TAG" =~ ^community-v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]] ||
-  die 'No published Community prerelease found, or invalid --tag'
+  die 'No accessible Community draft/prerelease found, or invalid --tag'
 VERSION="${TAG#community-v}"
 ASSET="codex-desktop_${VERSION}_${ARCH}.deb"
 STORE="$HOME/.local/share/chatgpt-community"
