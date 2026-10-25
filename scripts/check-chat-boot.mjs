@@ -158,11 +158,17 @@ export async function run(options) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  let code = 2;
   try {
-    const ok = await run(parseArgs(process.argv.slice(2)));
-    if (!ok) process.exitCode = 1;
+    code = await run(parseArgs(process.argv.slice(2))) ? 0 : 1;
   } catch (error) {
     console.error('FAIL chat_boot ' + error.message);
-    process.exitCode = 2;
   }
+  // CDP webviews may refuse the WebSocket closing handshake. The result has
+  // already been classified and printed; don't let an open debugging socket
+  // keep this one-shot acceptance CLI alive indefinitely and trigger rollback.
+  // Flush the printed verdict before exiting. Importers can still use run().
+  const stream = code === 0 ? process.stdout : process.stderr;
+  await new Promise(resolve => stream.write('', resolve));
+  process.exit(code);
 }

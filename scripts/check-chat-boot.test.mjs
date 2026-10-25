@@ -180,3 +180,26 @@ test('pinned 0.164.0 desktop build excludes the incompatible shared app-server s
   assert.equal(manifest.enabled.includes('shared-app-server-socket'), false);
   assert.equal(manifest.enabled.length, 38);
 });
+
+
+test('one-shot CLI terminates after verified PASS even if CDP WebSocket refuses close', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const script = fileURLToPath(new URL('./check-chat-boot.mjs', import.meta.url));
+  const preload = [
+    "const handle = setInterval(() => {}, 1000);",
+    "globalThis.fetch = async () => ({ok: true, json: async () => [{type:'page',id:'shell',url:'app://-/index.html',webSocketDebuggerUrl:'ws://127.0.0.1:9223/devtools/page/shell'}]});",
+    "globalThis.WebSocket = class {",
+    "  constructor() { this.listeners={}; }",
+    "  addEventListener(event, fn) { this.listeners[event]=fn; if (event==='open') queueMicrotask(fn); }",
+    "  send() { queueMicrotask(() => this.listeners.message?.({data:JSON.stringify({id:17,result:{result:{value:JSON.stringify({webviews:1,rootChildren:4,runtimeIdentity:true})}}})})); }",
+    "  close() { /* Simulate CDP server never acknowledging close. */ }",
+    "};",
+  ].join(String.fromCharCode(10));
+  const loaded = 'data:text/javascript;base64,' + Buffer.from(preload).toString('base64');
+  const r = spawnSync(process.execPath, ['--import', loaded, script, '--port', '9223', '--timeout', '2'], {
+    encoding: 'utf8', timeout: 3000
+  });
+  assert.equal(r.status, 0, r.stderr || String(r.error));
+  assert.match(r.stdout, /PASS chat_boot /);
+});
