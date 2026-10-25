@@ -32,9 +32,12 @@ public download assets, not an Actions artifact that expires.
    RELEASE_NOTES.md, and combined SHA256SUMS. The metadata labels
    runtimeAccepted=false. Build CI is not a desktop login test.
 
-If any release tag (including a draft) already exists, the workflow refuses
- to overwrite it. On a partial upload, the release stays draft; no false acceptance.
- Draft releases are visible only to authorized repository writers.
+Existing **published** tags cannot be overwritten. An interrupted draft can
+be resumed only when its downloadable release-metadata.json is byte-for-byte
+identical to the current verified build; every existing asset is checked against
+the local verified output before uploading only missing assets. Nothing is deleted
+or clobbered. If the draft's provenance is missing or differs, the workflow fails
+closed for manual reconciliation. Drafts are visible only to authorized writers.
 
 The optional workflow_dispatch path requires a specific previously successful
 build-run ID and applies the *same* trust checks. It cannot publish from an
