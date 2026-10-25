@@ -49,7 +49,7 @@ jobs:
       - name: Test release tooling
         run: |
           set -euo pipefail
-          node --test scripts/assemble-release.test.mjs scripts/install-from-release.test.mjs
+          node --test scripts/assemble-release.test.mjs scripts/install-from-release.test.mjs scripts/release-policy.test.mjs
           bash -n scripts/install-from-release.sh
           node --check scripts/stop-chatgpt-desktop.mjs
       - name: Verify successful build on current trusted branch
