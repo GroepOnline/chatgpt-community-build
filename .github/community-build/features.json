@@ -13,7 +13,6 @@
     "chatgpt-sidebar-separate-history",
     "chronicle-skysight",
     "codex-micro",
-    "community-features-in-gui-settings",
     "computer-use-linux",
     "copilot-reasoning-effort",
     "directory-only-working-tree-watch",
@@ -55,11 +54,6 @@
           "uiFontSize": {
             "enabled": true,
             "max": 24
-          }
-        },
-        "home": {
-          "suggestedPrompts": {
-            "enabled": true
           }
         },
         "modelPicker": {
