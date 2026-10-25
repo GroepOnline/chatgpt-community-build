@@ -30,7 +30,7 @@ export function isLocalDebuggerUrl(value, port) {
   try {
     const url = new URL(value);
     return url.protocol === 'ws:' &&
-      (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]') &&
       Number(url.port) === port;
   } catch {
     return false;
@@ -105,13 +105,28 @@ export function inspectShell(target, port, timeoutMs = 2000) {
   });
 }
 
+export async function fetchLocalTargets(port, load = fetch) {
+  let lastError;
+  // Chromium/Electron can bind CDP to IPv4 or IPv6 localhost across restarts.
+  // Both targets are loopback-only and validated again before opening CDP sockets.
+  for (const host of ['127.0.0.1', '[::1]']) {
+    try {
+      const response = await load('http://' + host + ':' + port + '/json/list', {
+        signal: AbortSignal.timeout(2300)
+      });
+      if (!response.ok) throw new Error('debugger_http_' + response.status);
+      const targets = await response.json();
+      if (!Array.isArray(targets)) throw new Error('unexpected_cdp_target_list');
+      return targets;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 export async function probe(port) {
-  const response = await fetch('http://127.0.0.1:' + port + '/json/list', {
-    signal: AbortSignal.timeout(2300)
-  });
-  if (!response.ok) throw new Error('debugger_http_' + response.status);
-  const targets = await response.json();
-  if (!Array.isArray(targets)) throw new Error('unexpected_cdp_target_list');
+  const targets = await fetchLocalTargets(port);
   const shells = targets.filter(isPrimaryShellTarget);
   const entries = await Promise.all(shells.map(async t => [t.id, await inspectShell(t, port)]));
   return classify(targets, new Map(entries));
