@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Authenticated desktop mount probe: counts webviews only; never reads user content.
+import { realpathSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 const ROOT_MIN = 3;
-const EXPR = 'JSON.stringify({webviews:document.querySelectorAll("webview").length,rootChildren:(document.querySelector("#root")?.children?.length ?? 0)})';
+const EXPR = 'JSON.stringify({webviews:document.querySelectorAll("webview").length,rootChildren:(document.querySelector("#root")?.children?.length ?? 0),runtimeIdentity:(typeof window.codexWindowType === "string" && typeof window.electronBridge === "object" && !!window.__codexRoot)})';
 
 export function parseArgs(args) {
   const result = { port: 9223, timeoutSeconds: 20, intervalMs: 800 };
@@ -36,19 +37,26 @@ export function isLocalDebuggerUrl(value, port) {
   }
 }
 
+export function isPrimaryShellTarget(target) {
+  return target.type === 'page' && target.url === 'app://-/index.html';
+}
+
 export function classify(targets, snapshots) {
-  const shells = targets.filter(t => t.type === 'page' && String(t.url || '').startsWith('app://'));
+  const shells = targets.filter(isPrimaryShellTarget);
   const observed = shells.map(t => snapshots.get(t.id) || { error: 'missing_snapshot' });
   const unsupportedNode = observed.some(s => s.error === 'node_22_websocket_required');
+  const identified = observed.some(s => s.runtimeIdentity === true);
   const mounted = observed.some(s =>
     Number.isInteger(s.webviews) && s.webviews >= 1 &&
-    Number.isInteger(s.rootChildren) && s.rootChildren >= ROOT_MIN);
+    Number.isInteger(s.rootChildren) && s.rootChildren >= ROOT_MIN &&
+    s.runtimeIdentity === true);
   return {
     ok: mounted,
     reason: mounted ? 'chat_shell_mounted' :
       shells.length === 0 ? 'wrong_debugger_or_no_shell' :
       unsupportedNode ? 'node_22_websocket_required' :
-      observed.every(s => s.error) ? 'shell_inspection_failed' : 'shell_without_chat_webview',
+      observed.every(s => s.error) ? 'shell_inspection_failed' :
+      !identified ? 'shell_identity_unverified' : 'shell_without_chat_webview',
     shellCount: shells.length,
     maxWebviews: Math.max(0, ...observed.map(s => Number(s.webviews) || 0)),
     maxRootChildren: Math.max(0, ...observed.map(s => Number(s.rootChildren) || 0))
@@ -104,7 +112,7 @@ export async function probe(port) {
   if (!response.ok) throw new Error('debugger_http_' + response.status);
   const targets = await response.json();
   if (!Array.isArray(targets)) throw new Error('unexpected_cdp_target_list');
-  const shells = targets.filter(t => t.type === 'page' && String(t.url || '').startsWith('app://'));
+  const shells = targets.filter(isPrimaryShellTarget);
   const entries = await Promise.all(shells.map(async t => [t.id, await inspectShell(t, port)]));
   return classify(targets, new Map(entries));
 }
@@ -129,7 +137,7 @@ export async function run(options) {
   return false;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
     const ok = await run(parseArgs(process.argv.slice(2)));
     if (!ok) process.exitCode = 1;

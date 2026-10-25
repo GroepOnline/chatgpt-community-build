@@ -79,8 +79,10 @@ This probe requires Node.js 22+ for the built-in WebSocket client; older
 Node versions fail with an explicit capability error.
 
 This command probes 127.0.0.1 only, requires an app:// desktop shell,
-and checks that the primary UI actually mounts its webviews. It never reads
-chat messages, browser URLs, tokens, or account settings. Exit 0 and
+and checks Codex runtime identity markers plus the primary UI webviews.
+CDP target discovery reads URL metadata to identify the app shell, but the
+probe never stores or prints those URLs, chat messages, tokens, or account
+settings. Exit 0 and
 PASS chat_boot mean shell/webview mount verified (not account/API
 functionality). Nonzero and FAIL chat_boot mean do not promote.
 Port 9224 is commonly occupied by Brave on this workstation; a normal

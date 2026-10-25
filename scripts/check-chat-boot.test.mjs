@@ -1,6 +1,11 @@
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { classify, inspectShell, isLocalDebuggerUrl, parseArgs } from './check-chat-boot.mjs';
+import { classify, inspectShell, isLocalDebuggerUrl, isPrimaryShellTarget, parseArgs } from './check-chat-boot.mjs';
 
 const shell = { id: 'primary', type: 'page', url: 'app://-/index.html' };
 const overlay = { id: 'overlay', type: 'page', url: 'app://-/overlay.html' };
@@ -8,7 +13,7 @@ const brave = { id: 'browser', type: 'page', url: 'https://learn.chatgpt.com/' }
 
 test('known-good primary shell mounts chat webviews', () => {
   const result = classify([shell, overlay], new Map([
-    ['primary', { webviews: 3, rootChildren: 5 }],
+    ['primary', { webviews: 3, rootChildren: 5, runtimeIdentity: true }],
     ['overlay', { webviews: 0, rootChildren: 2 }]
   ]));
   assert.equal(result.ok, true);
@@ -17,7 +22,7 @@ test('known-good primary shell mounts chat webviews', () => {
 
 test('26.1021 stuck shell fails even though React exists', () => {
   const result = classify([shell], new Map([
-    ['primary', { webviews: 0, rootChildren: 2 }]
+    ['primary', { webviews: 0, rootChildren: 2, runtimeIdentity: true }]
   ]));
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'shell_without_chat_webview');
@@ -25,7 +30,7 @@ test('26.1021 stuck shell fails even though React exists', () => {
 
 test('partial overlay webview is insufficient for a primary chat mount', () => {
   const result = classify([shell], new Map([
-    ['primary', { webviews: 1, rootChildren: 2 }]
+    ['primary', { webviews: 1, rootChildren: 2, runtimeIdentity: true }]
   ]));
   assert.equal(result.ok, false);
 });
@@ -34,6 +39,23 @@ test('Brave debugging port cannot impersonate the ChatGPT desktop', () => {
   const result = classify([brave], new Map());
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'wrong_debugger_or_no_shell');
+});
+
+test('unrelated app target cannot impersonate primary ChatGPT shell', () => {
+  const unrelated = { id: 'foreign', type: 'page', url: 'app://other/index.html' };
+  assert.equal(isPrimaryShellTarget(unrelated), false);
+  const result = classify([unrelated], new Map([['foreign', {
+    webviews: 3, rootChildren: 5, runtimeIdentity: true
+  }]]));
+  assert.equal(result.ok, false);
+});
+
+test('identical generic app index without Codex runtime markers is rejected', () => {
+  const result = classify([shell], new Map([['primary', {
+    webviews: 3, rootChildren: 5, runtimeIdentity: false
+  }]]));
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'shell_identity_unverified');
 });
 
 test('CDP evaluation errors fail closed', () => {
@@ -63,6 +85,21 @@ test('Node without global WebSocket fails gracefully with an actionable reason',
     assert.equal(classify([shell], new Map([['primary', shellSnapshot]])).reason, 'node_22_websocket_required');
   } finally {
     globalThis.WebSocket = original;
+  }
+});
+
+test('symlinked CLI entrypoint cannot exit successfully without probing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'chatgpt-boot-symlink-'));
+  try {
+    const alias = join(dir, 'boot.mjs');
+    symlinkSync(fileURLToPath(new URL('./check-chat-boot.mjs', import.meta.url)), alias);
+    const result = spawnSync(process.execPath, [alias, '--port', '65535', '--timeout', '1'], {
+      encoding: 'utf8', timeout: 7000
+    });
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /FAIL chat_boot/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
