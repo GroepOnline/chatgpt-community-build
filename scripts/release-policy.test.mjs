@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const read = rel => readFileSync(fileURLToPath(new URL('../'+rel,import.meta.url)),'utf8');
 
 test('release workflow is on free standard public GitHub runner only',()=>{
@@ -60,3 +64,64 @@ test('temporary Actions artifacts are deleted only after complete durable releas
   assert.match(w,/codex-desktop-community-.*\$\{arch\}/);
   assert.doesNotMatch(w,/--clobber|gh release delete/);
 });
+
+
+test('temporary artifact cleanup step parses as valid Bash',()=>{
+  const w=read('.github/workflows/community-release.yml');
+  const step=w.split('      - name: Remove redundant one-day build artifacts after verified GitHub release')[1];
+  assert.ok(step,'cleanup step must exist');
+  const body=step.split('        run: |')[1];
+  assert.ok(body,'cleanup step must have a shell body');
+  const script=body.split('\n').slice(1).filter(line=>line.startsWith('          ')).map(line=>line.slice(10)).join('\n');
+  const checked=spawnSync('bash',['-n'],{input:script,encoding:'utf8'});
+  assert.equal(checked.status,0,checked.stderr);
+});
+
+
+test('release cleanup preflights both architectures before any deletion',()=>{
+  const w=read('.github/workflows/community-release.yml');
+  const step=w.split('      - name: Remove redundant one-day build artifacts after verified GitHub release')[1];
+  const script=step.split('        run: |')[1].split('\n').slice(1).filter(line=>line.startsWith('          ')).map(line=>line.slice(10)).join('\n')
+    .replace('\${{ steps.bundle.outputs.tag }}','test-tag');
+  const root=mkdtempSync(join(tmpdir(),'community-release-cleanup-'));
+  try {
+    mkdirSync(join(root,'bin')); mkdirSync(join(root,'release'));
+    writeFileSync(join(root,'release','alpha.deb'),'a');
+    writeFileSync(join(root,'release','beta.deb'),'b');
+    const stub=join(root,'bin','gh');
+    writeFileSync(stub,`#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == release ]]; then
+  find "$RUNNER_TEMP/release" -maxdepth 1 -type f -printf '%f\n'
+elif [[ "$1" == api && "$2" == -X ]]; then
+  printf '%s\n' "$*" >> "$RUNNER_TEMP/deletes.log"
+else
+  cat "$RUNNER_TEMP/artifact-list.tsv"
+fi
+`,{mode:0o755});
+    const cases=[
+      {id:'valid',rows:'101\tcodex-desktop-community-amd64-77\n202\tcodex-desktop-community-arm64-77\n',ok:true},
+      {id:'missing-arm64',rows:'101\tcodex-desktop-community-amd64-77\n'},
+      {id:'duplicate-amd64',rows:'101\tcodex-desktop-community-amd64-77\n102\tcodex-desktop-community-amd64-77\n202\tcodex-desktop-community-arm64-77\n'},
+      {id:'nonnumeric',rows:'oops\tcodex-desktop-community-amd64-77\n202\tcodex-desktop-community-arm64-77\n'},
+      {id:'shared-id',rows:'101\tcodex-desktop-community-amd64-77\n101\tcodex-desktop-community-arm64-77\n'},
+    ];
+    for(const c of cases){
+      writeFileSync(join(root,'artifact-list.tsv'),c.rows);
+      rmSync(join(root,'deletes.log'),{force:true});
+      const p=spawnSync('bash',['-c',script],{
+        encoding:'utf8',env:{...process.env,PATH:`${join(root,'bin')}:${process.env.PATH}`,RUNNER_TEMP:root,
+          RUN_NUMBER:'77',BUILD_RUN_ID:'88',GITHUB_REPOSITORY:'GroepOnline/chatgpt-community-build'},
+      });
+      const deletions=readFileSyncIfPresent(join(root,'deletes.log'));
+      if(c.ok){
+        assert.equal(p.status,0,`${c.id}: ${p.stderr} ${p.stdout}`);
+        assert.equal(deletions.trim().split('\n').length,2,c.id);
+      }else{
+        assert.notEqual(p.status,0,`${c.id} incorrectly accepted`);
+        assert.equal(deletions,'',`${c.id} deleted an artifact before validating both`);
+      }
+    }
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
+function readFileSyncIfPresent(path){try{return readFileSync(path,'utf8');}catch(e){if(e?.code==='ENOENT')return '';throw e;}}
