@@ -34,3 +34,16 @@ test('build artifact storage is ephemeral and package source pinned',()=>{
   assert.match(build,/matrix:\s*\n\s*arch: \[amd64, arm64\]/);
   assert.match(build,/runs-on: \$\{\{ matrix\.arch == 'arm64' && 'ubuntu-24\.04-arm' \|\| 'ubuntu-24\.04' \}\}/);
 });
+
+test('retrying a draft requires matching provenance and bytes; published assets stay immutable',()=>{
+  const w=read('.github/workflows/community-release.yml');
+  const draftGuard=w.indexOf('gh release view "$tag"');
+  const isDraft=w.indexOf('is_draft=');
+  const provenance=w.indexOf('cmp -s "$RUNNER_TEMP/draft-existing/release-metadata.json"');
+  const existingCheck=w.indexOf('cmp -s "$existing"');
+  const upload=w.indexOf('gh release upload "$tag"');
+  assert.ok(draftGuard>0 && isDraft>draftGuard &&
+    provenance>isDraft && existingCheck>provenance && upload>existingCheck);
+  assert.match(w,/Existing published tag cannot be overwritten/);
+  assert.doesNotMatch(w,/gh release delete\b|--clobber\b/);
+});
