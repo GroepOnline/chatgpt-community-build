@@ -93,3 +93,15 @@ test('corrupted release bytes abort before any system or profile mutation',()=>{
     assert.equal(existsSync(join(f.home,'.codex')),false);
   } finally {f.dispose();}
 });
+
+test('root-owned dpkg-repack output is transferred to the desktop user before validation',()=>{
+  const scriptText=readFileSync(script,'utf8');
+  const produced=scriptText.indexOf('sudo -n dpkg-repack codex-desktop');
+  const chown=scriptText.indexOf('sudo -n chown -- "$(id -u):$(id -g)" "$repacked"');
+  const permissions=scriptText.indexOf('chmod 600 "$repacked"');
+  const moved=scriptText.indexOf('mv -- "$repacked" "$STATE/rollback.deb"');
+  const validation=scriptText.indexOf('dpkg-deb -f "$ROLLBACK" Package');
+  assert.ok(produced>=0 && produced<chown && chown<permissions &&
+    permissions<moved && moved<validation,'rollback ownership must be fixed before unprivileged inspection');
+  assert.match(scriptText,/\[\[ -f "\$repacked" && ! -L "\$repacked" \]\]/);
+});
