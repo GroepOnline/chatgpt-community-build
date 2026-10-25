@@ -47,3 +47,16 @@ test('retrying a draft requires matching provenance and bytes; published assets 
   assert.match(w,/Existing published tag cannot be overwritten/);
   assert.doesNotMatch(w,/gh release delete\b|--clobber\b/);
 });
+
+test('temporary Actions artifacts are deleted only after complete durable release validation',()=>{
+  const w=read('.github/workflows/community-release.yml');
+  const publish=w.indexOf('gh release create "$tag"');
+  const verify=w.lastIndexOf('Cannot delete artifacts: release assets incomplete');
+  const identity=w.lastIndexOf('Artifact identity ambiguous or missing');
+  const deletion=w.lastIndexOf('gh api -X DELETE');
+  assert.ok(publish>0 && verify>publish && identity>verify && deletion>identity);
+  assert.match(w,/if: success\(\)/);
+  assert.match(w,/actions: write/);
+  assert.match(w,/codex-desktop-community-.*\$\{arch\}/);
+  assert.doesNotMatch(w,/--clobber|gh release delete/);
+});
