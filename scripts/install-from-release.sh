@@ -110,7 +110,13 @@ else
     command -v dpkg-repack >/dev/null || die 'Install dpkg-repack, or pass --rollback-deb, before upgrading'
     (cd "$STATE" && sudo -n dpkg-repack codex-desktop)
     repacked="$STATE/codex-desktop_${OLD_VERSION}_${ARCH}.deb"
-    [[ -f "$repacked" ]] || die 'dpkg-repack did not produce the expected exact package'
+    [[ -f "$repacked" && ! -L "$repacked" ]] ||
+      die 'dpkg-repack did not produce the expected regular package'
+    # dpkg-repack runs as root. Under umask 077 its .deb may be root:root 0600.
+    # Transfer ownership of this exact, private regular file before any
+    # non-root dpkg-deb inspection, mv or SHA256 validation.
+    sudo -n chown -- "$(id -u):$(id -g)" "$repacked"
+    chmod 600 "$repacked"
     mv -- "$repacked" "$STATE/rollback.deb"
   fi
 fi
