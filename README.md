@@ -55,3 +55,34 @@ building. A successful run retains the `.deb`, its build metadata, the signed
 package metadata, feature manifest, and SHA-256 checksums as a one-day Actions
 artifact. The artifact is a temporary build output, not a release or an
 endorsement.
+
+## Runtime acceptance gate (required before promoting a build)
+
+**Build CI is not a desktop boot test.** On 2026-10-25 the signed
+26.1021.22027 bundle, both with Community features and without patches,
+displayed only an idle app:// shell on the joep workstation (no chat
+webview). The older installed codex-desktop 2026.10.21.9 was still working.
+A successful Actions build must therefore remain a candidate, not be
+automatically installed or called runtime-verified.
+
+On a logged-in workstation with an actual ChatGPT window open, start the
+Community app with a dedicated local CDP port (for example 9223) and run:
+
+    node scripts/check-chat-boot.mjs --port 9223 --timeout 20
+
+This command probes 127.0.0.1 only, requires an app:// desktop shell,
+and checks that the primary UI actually mounts its webviews. It never reads
+chat messages, browser URLs, tokens, or account settings. Exit 0 and
+PASS chat_boot mean shell/webview mount verified (not account/API
+functionality). Nonzero and FAIL chat_boot mean do not promote.
+Port 9224 is commonly occupied by Brave on this workstation; a normal
+web-browser CDP endpoint is deliberately rejected.
+
+The regression tests (node --test scripts/check-chat-boot.test.mjs) cover
+the real observed good shell (three webviews, five root children) and the
+bad shell (zero webviews, two root children). They run in build CI but do
+not replace the authenticated workstation probe. Before any upgrade,
+retain an installable, checksum-verified .deb of the known-good version
+outside temporary GitHub Actions artifacts. If the candidate fails, keep
+(or reinstall) the known-good package; never classify a build-only CI
+result as a successful upgrade.
