@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
-      actions: read
+      actions: write # narrow run-scoped cleanup after matching release assets are verified
     env:
       GH_TOKEN: ${{ github.token }}
       BUILD_RUN_ID: ${{ github.event.workflow_run.id || inputs.build_run_id }}
@@ -152,3 +152,29 @@ jobs:
           fi
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
           echo "PUBLISHED https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
+      - name: Remove redundant one-day build artifacts after verified GitHub release
+        if: success()
+        env:
+          RUN_NUMBER: ${{ steps.source.outputs.run_number }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.bundle.outputs.tag }}"
+          # Exact live inventory of the verified draft/published release.
+          expected="$(find "$RUNNER_TEMP/release" -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          actual="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
+          [[ "$expected" == "$actual" ]] || { echo 'Cannot delete artifacts: release assets incomplete'; exit 1; }
+          [[ "$RUN_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${BUILD_RUN_ID}/artifacts"             --paginate --jq '.artifacts[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/cleanup-artifacts.tsv"
+          for arch in amd64 arm64; do
+            name="codex-desktop-community-${arch}-${RUN_NUMBER}"
+            rows="$(awk -F '\t' -v n="$name" '$2==n {print $1}' "$RUNNER_TEMP/cleanup-artifacts.tsv")"
+            [[ "$(printf '%s\n' "$rows" | grep -c '^[0-9][0-9]*
+ || true)" == 1 ]] || {
+              echo "Artifact identity ambiguous or missing for $name"; exit 1;
+            }
+            id="$rows"
+            [[ "$id" =~ ^[0-9]+$ ]]
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}" >/dev/null
+            echo "PURGED verified temporary artifact $name ($id)"
+          done
