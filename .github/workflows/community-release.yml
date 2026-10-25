@@ -100,7 +100,7 @@ jobs:
           tag="$(jq -r '.tag' "$RUNNER_TEMP/release/release-metadata.json")"
           [[ "$tag" =~ ^community-v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      - name: Publish immutable draft then prerelease
+      - name: Save verified release draft; publish only with redistribution rights
         run: |
           set -euo pipefail
           tag="${{ steps.bundle.outputs.tag }}"
@@ -117,5 +117,12 @@ jobs:
           expected="$(find "$RUNNER_TEMP/release" -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
           actual="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
           [[ "$expected" == "$actual" ]] || { echo 'Incomplete release: draft kept; refused publication'; exit 1; }
+          # The Community .deb contains proprietary OpenAI software. A public repo
+          # does not grant redistribution rights. Keep a GitHub draft (write-access
+          # only) unless an administrator has verified an explicit license.
+          if [[ "${{ vars.COMMUNITY_BINARY_REDISTRIBUTION_AUTHORIZED }}" != "true" ]]; then
+            echo "DRAFT_READY: package assets retained for repository writers; public distribution on HOLD"
+            exit 0
+          fi
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
           echo "PUBLISHED https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
