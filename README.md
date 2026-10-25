@@ -57,8 +57,17 @@ retired or aliased, and stamps the package version with the UTC build date. It
 runs the upstream feature tests before resolving the signed package and
 building. A successful run retains the `.deb`, its build metadata, the signed
 package metadata, feature manifest, and SHA-256 checksums as a one-day Actions
-artifact. The artifact is a temporary build output, not a release or an
-endorsement.
+artifact. The Actions artifact is temporary. After a successful trusted-branch push,
+`.github/workflows/community-release.yml` downloads and rechecks both AMD64 and
+ARM64 artifacts, then publishes a SHA256-verified **public prerelease** with
+immutable-by-policy versioned assets. This is not an official OpenAI release or
+proof of a working desktop login. See `docs/release-flow.md`.
+
+With the laptop offline, the cloud release flow still completes. No workstation
+installation is triggered. Later, `bash scripts/install-from-release.sh --stage`
+only downloads and verifies a release; `--apply` is an explicitly opt-in local
+package change with zero-process checks, a private rollback .deb, profile
+snapshot, and two live chat acceptance checks.
 
 ## Zero-process installation preflight
 
