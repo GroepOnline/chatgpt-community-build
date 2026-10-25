@@ -163,7 +163,9 @@ clean_up() {
     echo 'CANDIDATE_REJECTED: attempting tested rollback' >&2
     node "$ROOT/scripts/stop-chatgpt-desktop.mjs" --close
     if node "$ROOT/scripts/verify-desktop-quiescence.mjs"; then
-      if sudo -n dpkg -i "$ROLLBACK"; then
+      # Never feed a rollback DEB to root if its bytes changed since snapshot.
+      if sha256sum --check --quiet "$STATE/rollback.SHA256SUMS" &&
+         sudo -n dpkg -i "$ROLLBACK"; then
         # Restore the quiescent pre-upgrade profile, without discarding rejected state.
         if [[ -d "$STATE/snapshot/Codex" ]]; then
           [[ ! -e "$STATE/rejected-Codex" ]] && mv "$HOME/.config/Codex" "$STATE/rejected-Codex"
@@ -229,6 +231,14 @@ for name in config.toml auth.json; do
 done
 node "$ROOT/scripts/verify-desktop-quiescence.mjs" ||
   die 'Background process restarted during snapshot; no package changed'
+# Stage-time validation alone is not sufficient after a long snapshot.
+node "$ROOT/scripts/assemble-release.mjs" --mode verify \
+  --stage-dir "$STAGE" --tag "$TAG" --arch "$ARCH" ||
+  die 'Release package changed after staging; refusing installation'
+sha256sum --check --quiet "$STATE/candidate.SHA256SUMS" ||
+  die 'Candidate checksum drift after rollback preparation'
+sha256sum --check --quiet "$STATE/rollback.SHA256SUMS" ||
+  die 'Rollback DEB changed before candidate install'
 ARMED=1
 sudo -n dpkg -i "$DEB"
 [[ "$(dpkg-query -W -f='${Version}' codex-desktop)" == "$VERSION" ]] ||
@@ -239,7 +249,15 @@ start_community || die 'Community launcher missing'
 boot_gate || die 'Mounted chat-webview runtime acceptance failed'
 [[ "$(dpkg-query -W -f='${Version}' codex-desktop)" == "$VERSION" ]] ||
   die 'Package version drifted after launch'
+# Commit a private receipt atomically BEFORE marking the package accepted.
+receipt_tmp="$(mktemp "$STORE/receipts/.accepted.XXXXXXXX")" ||
+  die 'Cannot create private receipt'
+if ! printf '{"status":"LIVE_ACCEPTED","tag":"%s","version":"%s","previous":"%s"}\n' \
+  "$TAG" "$VERSION" "$OLD_VERSION" > "$receipt_tmp"; then
+  die 'Cannot write private acceptance receipt'
+fi
+chmod 600 "$receipt_tmp" || die 'Cannot secure private receipt'
+mv -f -- "$receipt_tmp" "$STORE/receipts/$VERSION.json" ||
+  die 'Cannot atomically commit acceptance receipt'
 ACCEPTED=1
-printf '{"status":"LIVE_ACCEPTED","tag":"%s","version":"%s","previous":"%s"}\n' \
-  "$TAG" "$VERSION" "$OLD_VERSION" > "$STORE/receipts/$VERSION.json"
 printf 'LIVE_ACCEPTED Community %s; backup: %s\n' "$VERSION" "$STATE"
