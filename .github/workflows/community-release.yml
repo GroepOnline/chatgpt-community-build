@@ -108,15 +108,38 @@ jobs:
           latest="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/build/community-20261021" --jq '.object.sha')"
           [[ "$latest" == "${{ steps.source.outputs.sha }}" ]] || { echo 'Branch changed during artifact verification'; exit 1; }
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'Release already exists: refusing to overwrite public assets.'
-            exit 1
+            is_draft="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+            [[ "$is_draft" == true ]] || { echo 'Existing published tag cannot be overwritten'; exit 1; }
+            # Repair only a draft with exactly the same verified provenance.
+            # Never delete an unrelated draft, and never overwrite an asset.
+            mkdir -p "$RUNNER_TEMP/draft-existing"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" -D "$RUNNER_TEMP/draft-existing"
+            [[ -f "$RUNNER_TEMP/draft-existing/release-metadata.json" ]] ||
+              { echo 'Draft lacks verifiable provenance; manual reconciliation required'; exit 1; }
+            cmp -s "$RUNNER_TEMP/draft-existing/release-metadata.json" \
+              "$RUNNER_TEMP/release/release-metadata.json" ||
+              { echo 'Draft build identity differs; no recovery allowed'; exit 1; }
+            for existing in "$RUNNER_TEMP/draft-existing/"*; do
+              name="${existing##*/}"
+              [[ -f "$RUNNER_TEMP/release/$name" ]] &&
+                cmp -s "$existing" "$RUNNER_TEMP/release/$name" ||
+                { echo "Draft asset mismatches verified build: $name"; exit 1; }
+            done
+            for asset in "$RUNNER_TEMP/release/"*; do
+              name="${asset##*/}"
+              if [[ ! -f "$RUNNER_TEMP/draft-existing/$name" ]]; then
+                gh release upload "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+              fi
+            done
+            echo 'RESUMED verified owned draft, no destructive deletes or overwrites'
+          else
+            gh release create "$tag" "$RUNNER_TEMP/release/"* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "${{ steps.source.outputs.sha }}" \
+              --title "ChatGPT Community Linux ${tag#community-v}" \
+              --notes-file "$RUNNER_TEMP/release/RELEASE_NOTES.md" \
+              --draft --prerelease
           fi
-          gh release create "$tag" "$RUNNER_TEMP/release/"* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "${{ steps.source.outputs.sha }}" \
-            --title "ChatGPT Community Linux ${tag#community-v}" \
-            --notes-file "$RUNNER_TEMP/release/RELEASE_NOTES.md" \
-            --draft --prerelease
           expected="$(find "$RUNNER_TEMP/release" -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
           actual="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)"
           [[ "$expected" == "$actual" ]] || { echo 'Incomplete release: draft kept; refused publication'; exit 1; }
