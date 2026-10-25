@@ -39,6 +39,7 @@ export function isLocalDebuggerUrl(value, port) {
 export function classify(targets, snapshots) {
   const shells = targets.filter(t => t.type === 'page' && String(t.url || '').startsWith('app://'));
   const observed = shells.map(t => snapshots.get(t.id) || { error: 'missing_snapshot' });
+  const unsupportedNode = observed.some(s => s.error === 'node_22_websocket_required');
   const mounted = observed.some(s =>
     Number.isInteger(s.webviews) && s.webviews >= 1 &&
     Number.isInteger(s.rootChildren) && s.rootChildren >= ROOT_MIN);
@@ -46,6 +47,7 @@ export function classify(targets, snapshots) {
     ok: mounted,
     reason: mounted ? 'chat_shell_mounted' :
       shells.length === 0 ? 'wrong_debugger_or_no_shell' :
+      unsupportedNode ? 'node_22_websocket_required' :
       observed.every(s => s.error) ? 'shell_inspection_failed' : 'shell_without_chat_webview',
     shellCount: shells.length,
     maxWebviews: Math.max(0, ...observed.map(s => Number(s.webviews) || 0)),
@@ -57,8 +59,11 @@ export function inspectShell(target, port, timeoutMs = 2000) {
   if (!isLocalDebuggerUrl(target.webSocketDebuggerUrl, port)) {
     return Promise.resolve({ error: 'invalid_local_cdp_endpoint' });
   }
+  if (typeof globalThis.WebSocket !== 'function') {
+    return Promise.resolve({ error: 'node_22_websocket_required' });
+  }
   return new Promise(resolve => {
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
+    const ws = new globalThis.WebSocket(target.webSocketDebuggerUrl);
     let finished = false;
     const complete = value => {
       if (finished) return;

@@ -70,6 +70,9 @@ Community app with a dedicated local CDP port (for example 9223) and run:
 
     node scripts/check-chat-boot.mjs --port 9223 --timeout 20
 
+This probe requires Node.js 22+ for the built-in WebSocket client; older
+Node versions fail with an explicit capability error.
+
 This command probes 127.0.0.1 only, requires an app:// desktop shell,
 and checks that the primary UI actually mounts its webviews. It never reads
 chat messages, browser URLs, tokens, or account settings. Exit 0 and

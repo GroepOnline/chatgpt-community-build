@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, isLocalDebuggerUrl, parseArgs } from './check-chat-boot.mjs';
+import { classify, inspectShell, isLocalDebuggerUrl, parseArgs } from './check-chat-boot.mjs';
 
 const shell = { id: 'primary', type: 'page', url: 'app://-/index.html' };
 const overlay = { id: 'overlay', type: 'page', url: 'app://-/overlay.html' };
@@ -50,6 +50,20 @@ test('debugging endpoints must be local and bound to the selected port', () => {
   assert.equal(isLocalDebuggerUrl('ws://127.0.0.1:9224/devtools/page/a', 9223), false);
   assert.equal(isLocalDebuggerUrl('ws://example.com:9223/devtools/page/a', 9223), false);
   assert.equal(isLocalDebuggerUrl('wss://127.0.0.1:9223/devtools/page/a', 9223), false);
+});
+
+test('Node without global WebSocket fails gracefully with an actionable reason', async () => {
+  const original = globalThis.WebSocket;
+  try {
+    globalThis.WebSocket = undefined;
+    const shellSnapshot = await inspectShell({
+      webSocketDebuggerUrl: 'ws://127.0.0.1:9223/devtools/page/a'
+    }, 9223);
+    assert.deepEqual(shellSnapshot, { error: 'node_22_websocket_required' });
+    assert.equal(classify([shell], new Map([['primary', shellSnapshot]])).reason, 'node_22_websocket_required');
+  } finally {
+    globalThis.WebSocket = original;
+  }
 });
 
 test('strict numeric argument parsing', () => {
