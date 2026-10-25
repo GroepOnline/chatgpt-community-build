@@ -78,7 +78,7 @@ Community app with a dedicated local CDP port (for example 9223) and run:
 This probe requires Node.js 22+ for the built-in WebSocket client; older
 Node versions fail with an explicit capability error.
 
-This command probes 127.0.0.1 only, requires an app:// desktop shell,
+This command probes IPv4 and IPv6 loopback (127.0.0.1 and ::1) only, requires an app:// desktop shell,
 and checks Codex runtime identity markers plus the primary UI webviews.
 CDP target discovery reads URL metadata to identify the app shell, but the
 probe never stores or prints those URLs, chat messages, tokens, or account

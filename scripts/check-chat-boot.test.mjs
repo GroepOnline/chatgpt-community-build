@@ -130,14 +130,36 @@ test('CDP loopback lookup falls back to IPv6 after IPv4 is unavailable', async (
   assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list', 'http://[::1]:9223/json/list']);
 });
 
-test('CDP loopback lookup prefers IPv4 and never contacts nonlocal addresses', async () => {
+test('CDP loopback lookup uses IPv4 when it has the actual ChatGPT shell', async () => {
+  const calls = [];
+  const shellTargets = [{ id: 'primary', type: 'page', url: 'app://-/index.html' }];
+  const got = await fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    return { ok: true, json: async () => shellTargets };
+  });
+  assert.deepEqual(got, shellTargets);
+  assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list']);
+});
+
+test('CDP loopback lookup also checks IPv6 when IPv4 returns an empty target list', async () => {
+  const calls = [];
+  const shellTargets = [{ id: 'primary', type: 'page', url: 'app://-/index.html' }];
+  const got = await fetchLocalTargets(9223, async url => {
+    calls.push(url);
+    return { ok: true, json: async () => url.includes('127.0.0.1') ? [] : shellTargets };
+  });
+  assert.deepEqual(got, shellTargets);
+  assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list', 'http://[::1]:9223/json/list']);
+});
+
+test('CDP loopback lookup returns no shell only after checking both interfaces', async () => {
   const calls = [];
   const got = await fetchLocalTargets(9223, async url => {
     calls.push(url);
     return { ok: true, json: async () => [] };
   });
   assert.deepEqual(got, []);
-  assert.deepEqual(calls, ['http://127.0.0.1:9223/json/list']);
+  assert.equal(calls.length, 2);
 });
 
 test('CDP loopback lookup fails if both local debuggers return invalid results', async () => {

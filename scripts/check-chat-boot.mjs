@@ -107,6 +107,7 @@ export function inspectShell(target, port, timeoutMs = 2000) {
 
 export async function fetchLocalTargets(port, load = fetch) {
   let lastError;
+  let fallbackTargets = null;
   // Chromium/Electron can bind CDP to IPv4 or IPv6 localhost across restarts.
   // Both targets are loopback-only and validated again before opening CDP sockets.
   for (const host of ['127.0.0.1', '[::1]']) {
@@ -117,11 +118,15 @@ export async function fetchLocalTargets(port, load = fetch) {
       if (!response.ok) throw new Error('debugger_http_' + response.status);
       const targets = await response.json();
       if (!Array.isArray(targets)) throw new Error('unexpected_cdp_target_list');
-      return targets;
+      // An unrelated local debugger can legitimately respond with [].
+      // Continue checking the other loopback interface for the real ChatGPT shell.
+      if (targets.some(isPrimaryShellTarget)) return targets;
+      fallbackTargets = targets;
     } catch (error) {
       lastError = error;
     }
   }
+  if (fallbackTargets !== null) return fallbackTargets;
   throw lastError;
 }
 
