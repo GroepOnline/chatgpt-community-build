@@ -11,9 +11,14 @@ env:
   UPSTREAM_COMMIT: fc533a9346095e74d47c506e3103b7282c5c54d9
 
 jobs:
-  build-amd64:
-    runs-on: ubuntu-24.04
+  build:
+    name: build-${{ matrix.arch }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     steps:
       - name: Checkout build recipe
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -30,7 +35,7 @@ jobs:
       - name: Install package build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends dpkg-dev gnupg patchelf
+          sudo apt-get install -y --no-install-recommends dpkg-dev gnupg gpgv patchelf
       - name: Fetch pinned upstream source
         run: |
           set -euo pipefail
@@ -59,23 +64,23 @@ jobs:
             scripts/patch-linux-window-ui.test.js scripts/patches/descriptor.test.js \
             scripts/patches/lib/global-shortcuts-portal.test.js scripts/patches/core/*/test.js \
             linux-features/*/test.js linux-features/ui-tweaks/model-picker-native.test.js
-      - name: Resolve and verify official signed amd64 package
+      - name: Resolve and verify official signed package
         id: upstream
         working-directory: ${{ runner.temp }}/codex-desktop-linux
         run: |
           set -euo pipefail
-          mkdir -p upstream
+          mkdir -p "upstream/${{ matrix.arch }}"
           package="$(node scripts/lib/upstream-linux-package.js \
-            --output-dir upstream/amd64 \
-            --metadata upstream/amd64.json \
+            --output-dir "upstream/${{ matrix.arch }}" \
+            --metadata "upstream/${{ matrix.arch }}.json" \
             --key-base64 assets/openai-codex-linux-repository-key.gpg.base64 \
-            --arch amd64)"
+            --arch "${{ matrix.arch }}")"
           echo "package=$package" >> "$GITHUB_OUTPUT"
       - name: Build app and native feature helpers
         working-directory: ${{ runner.temp }}/codex-desktop-linux
         env:
           CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
-          CODEX_TARGET_ARCH: amd64
+          CODEX_TARGET_ARCH: ${{ matrix.arch }}
           PACKAGE_WITH_UPDATER: '0'
           MAX_BUILD_THREADS: '4'
           UPSTREAM_PACKAGE: ${{ steps.upstream.outputs.package }}
@@ -88,31 +93,32 @@ jobs:
         working-directory: ${{ runner.temp }}/codex-desktop-linux
         env:
           CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
-          CODEX_TARGET_ARCH: amd64
+          CODEX_TARGET_ARCH: ${{ matrix.arch }}
           PACKAGE_WITH_UPDATER: '0'
           MAX_BUILD_THREADS: '4'
           FEATURES_MANIFEST: ${{ github.workspace }}/.github/community-build/features.json
+          TARGET_ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           export PACKAGE_VERSION="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
           make deb
-          package="$(find dist -maxdepth 1 -type f -name 'codex-desktop_*_amd64.deb' -print -quit)"
+          package="$(find dist -maxdepth 1 -type f -name "codex-desktop_*_${{ matrix.arch }}.deb" -print -quit)"
           test -n "$package"
           test "$(dpkg-deb -f "$package" Package)" = codex-desktop
-          test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          test "$(dpkg-deb -f "$package" Architecture)" = "${{ matrix.arch }}"
           test "$(dpkg-deb -f "$package" Version)" = "$PACKAGE_VERSION"
           test "$(dpkg-deb -f "$package" Depends | grep -o 'codex-update-manager' || true)" = ''
           output="$RUNNER_TEMP/community-build-artifact"
           mkdir -p "$output"
           cp "$package" "$output/"
-          cp upstream/amd64.json "$output/upstream-signed-metadata.json"
+          cp "upstream/${{ matrix.arch }}.json" "$output/upstream-signed-metadata.json"
           dpkg-deb --fsys-tarfile "$package" | tar -xOf - ./opt/codex-desktop/.codex-linux/build-info.json > "$output/build-info.json"
           node - "$output/build-info.json" <<'NODE'
           const fs = require('node:fs');
           const info = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
           const manifest = JSON.parse(fs.readFileSync(process.env.FEATURES_MANIFEST, 'utf8'));
           if (info.source?.commit !== process.env.UPSTREAM_COMMIT) throw new Error('package build-info source commit mismatch');
-          if (info.upstreamLinuxPackage?.architecture !== 'amd64') throw new Error('official package architecture mismatch');
+          if (info.upstreamLinuxPackage?.architecture !== process.env.TARGET_ARCH) throw new Error('official package architecture mismatch');
           const enabled = [...(info.linuxFeatures?.enabled ?? [])].sort();
           if (JSON.stringify(enabled) !== JSON.stringify([...manifest.enabled].sort())) throw new Error('packaged feature set mismatch');
           NODE
@@ -122,7 +128,7 @@ jobs:
       - name: Upload one-day build artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: codex-desktop-community-amd64-${{ github.run_number }}
+          name: codex-desktop-community-${{ matrix.arch }}-${{ github.run_number }}
           path: ${{ steps.package.outputs.artifact_dir }}
           retention-days: 1
           if-no-files-found: error
