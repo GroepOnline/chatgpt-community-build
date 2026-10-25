@@ -13,6 +13,8 @@ test('release workflow is on free standard public GitHub runner only',()=>{
   assert.match(w,/github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(w,/head_branch == 'build\/community-20261021'/);
   assert.match(w,/sha.*==.*head|sha.*head/);
+  assert.match(w,/git rev-parse HEAD/);
+  assert.match(w,/Branch changed during artifact verification/);
 });
 test('public proprietary package upload is held as a private draft by default',()=>{
   const w=read('.github/workflows/community-release.yml');
