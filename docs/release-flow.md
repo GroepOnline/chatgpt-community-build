@@ -82,7 +82,10 @@ Local apply requires:
   checks before dpkg. No sudo override of the vendor's running-process guard.
 - Only Community launched, on loopback CDP port 9223. Twice passing
   check-chat-boot.mjs, once after a settling interval, is needed to record
-  LIVE_ACCEPTED. No successful CI run is sufficient on its own.
+  LIVE_ACCEPTED (desktop composer readiness, **not** end-to-end send/response).
+  The gate rejects shell-only and hidden codex-sandbox webview false positives.
+  Actual chat functionality must be verified separately with a real new-chat
+  send and received answer; no successful CI or composer-only check proves it.
 - On failure after the package switch: stop candidate, reinstall prior .deb,
   restore the private pre-upgrade profile and verify previous chat boot.
   The previous package and receipt are preserved on disk for recovery.

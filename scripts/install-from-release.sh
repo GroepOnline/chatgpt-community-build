@@ -246,7 +246,7 @@ sudo -n dpkg -i "$DEB"
 node "$ROOT/scripts/verify-desktop-quiescence.mjs" ||
   die 'Another desktop instance started during dpkg'
 start_community || die 'Community launcher missing'
-boot_gate || die 'Mounted chat-webview runtime acceptance failed'
+boot_gate || die 'Visible ChatGPT composer runtime acceptance failed'
 [[ "$(dpkg-query -W -f='${Version}' codex-desktop)" == "$VERSION" ]] ||
   die 'Package version drifted after launch'
 # Commit a private receipt atomically BEFORE marking the package accepted.

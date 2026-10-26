@@ -1,11 +1,36 @@
 #!/usr/bin/env node
-// Authenticated desktop mount probe: counts webviews only; never reads user content.
+// Desktop chat-composer readiness probe. Never reads chat text or credentials.
 import { realpathSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 const ROOT_MIN = 3;
-const EXPR = 'JSON.stringify({webviews:document.querySelectorAll("webview").length,rootChildren:(document.querySelector("#root")?.children?.length ?? 0),runtimeIdentity:(typeof window.codexWindowType === "string" && typeof window.electronBridge === "object" && !!window.__codexRoot)})';
+export const SHELL_SNAPSHOT_EXPR = `JSON.stringify((() => {
+  const visible = element => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return rect.width >= 20 && rect.height >= 12 &&
+      style.visibility !== 'hidden' && style.display !== 'none' &&
+      style.pointerEvents !== 'none' && Number(style.opacity) > 0;
+  };
+  // A hidden codex-sandbox webview does NOT mean the actual chat is usable.
+  // Inspect only UI structure; never read text, tokens, or account data.
+  const composerReady = Array.from(document.querySelectorAll(
+    '[role="textbox"][contenteditable="true"][aria-label="Ask ChatGPT"]'
+  )).some(visible);
+  // On a new/empty chat Send is disabled by design, so check presence/visibility.
+  const sendControlReady = Array.from(document.querySelectorAll(
+    'button[aria-label="Send"]'
+  )).some(visible);
+  return {
+    webviews: document.querySelectorAll('webview').length,
+    rootChildren: document.querySelector('#root')?.children?.length ?? 0,
+    composerReady,
+    sendControlReady,
+    runtimeIdentity: (typeof window.codexWindowType === 'string' &&
+      typeof window.electronBridge === 'object' && !!window.__codexRoot)
+  };
+})())`;
 
 export function parseArgs(args) {
   const result = { port: 9223, timeoutSeconds: 20, intervalMs: 800 };
@@ -47,7 +72,7 @@ export function classify(targets, snapshots) {
   const unsupportedNode = observed.some(s => s.error === 'node_22_websocket_required');
   const identified = observed.some(s => s.runtimeIdentity === true);
   const mounted = observed.some(s =>
-    Number.isInteger(s.webviews) && s.webviews >= 1 &&
+    s.composerReady === true && s.sendControlReady === true &&
     Number.isInteger(s.rootChildren) && s.rootChildren >= ROOT_MIN &&
     s.runtimeIdentity === true);
   return {
@@ -56,8 +81,9 @@ export function classify(targets, snapshots) {
       shells.length === 0 ? 'wrong_debugger_or_no_shell' :
       unsupportedNode ? 'node_22_websocket_required' :
       observed.every(s => s.error) ? 'shell_inspection_failed' :
-      !identified ? 'shell_identity_unverified' : 'shell_without_chat_webview',
+      !identified ? 'shell_identity_unverified' : 'chat_composer_unavailable',
     shellCount: shells.length,
+    interactiveComposer: observed.some(s => s.composerReady === true && s.sendControlReady === true),
     maxWebviews: Math.max(0, ...observed.map(s => Number(s.webviews) || 0)),
     maxRootChildren: Math.max(0, ...observed.map(s => Number(s.rootChildren) || 0))
   };
@@ -84,7 +110,7 @@ export function inspectShell(target, port, timeoutMs = 2000) {
     ws.addEventListener('open', () => {
       ws.send(JSON.stringify({
         id: 17, method: 'Runtime.evaluate',
-        params: { expression: EXPR, returnByValue: true }
+        params: { expression: SHELL_SNAPSHOT_EXPR, returnByValue: true }
       }));
     });
     ws.addEventListener('message', event => {

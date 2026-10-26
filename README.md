@@ -92,7 +92,7 @@ signature/checksum verification may run while the old app is open, but the
 **actual package swap** requires zero ChatGPT/Codex processes. Confirm the
 process-free condition again immediately before touching the package. Preserve
 both the previous .deb and a profile snapshot for rollback. After installing,
-start **only Community** and run the logged-in chat-webview gate below.
+start **only Community** and run the logged-in chat-composer gate below.
 
 This procedure follows the upstream README and
 `docs/troubleshooting.md` sections *The app does not launch*,
@@ -107,12 +107,12 @@ failure because it still contained the shared app-server bridge. On
 initialization with that hook disabled; the same unpatched official
 26.1021.22027 application also initialized. The manifest now excludes
 the incompatible bridge and must still pass the authenticated chat
-webview gate on the laptop before release acceptance.
+composer gate on the laptop before release acceptance.
 
 **Build CI is not a desktop boot test.** On 2026-10-25 the signed
 26.1021.22027 bundle, both with Community features and without patches,
-displayed only an idle app:// shell on the joep workstation (no chat
-webview). The older installed codex-desktop 2026.10.21.9 was still working.
+displayed only an idle app:// shell on the joep workstation (no usable
+chat composer). The older installed codex-desktop 2026.10.21.9 was still working.
 A successful Actions build must therefore remain a candidate, not be
 automatically installed or called runtime-verified.
 
@@ -125,19 +125,21 @@ This probe requires Node.js 22+ for the built-in WebSocket client; older
 Node versions fail with an explicit capability error.
 
 This command probes IPv4 and IPv6 loopback (127.0.0.1 and ::1) only, requires an app:// desktop shell,
-and checks Codex runtime identity markers plus the primary UI webviews.
-CDP target discovery reads URL metadata to identify the app shell, but the
-probe never stores or prints those URLs, chat messages, tokens, or account
-settings. Exit 0 and
-PASS chat_boot mean shell/webview mount verified (not account/API
-functionality). Nonzero and FAIL chat_boot mean do not promote.
+and checks Codex runtime identity plus a visible **Ask ChatGPT** editable
+composer and **Send** control in the primary app shell. A hidden 1-pixel
+codex-sandbox webview cannot satisfy this gate. CDP target discovery reads
+URL metadata only to identify the app shell; the probe never stores or
+prints URLs, chat messages, tokens, or account settings. Exit 0 and
+PASS chat_boot mean **UI composer readiness only**, not successful message
+submission or account/API functionality. A real send/response check is
+required to claim end-to-end chat usability. Nonzero means do not promote.
 Port 9224 is commonly occupied by Brave on this workstation; a normal
 web-browser CDP endpoint is deliberately rejected.
 
 The regression tests (node --test scripts/check-chat-boot.test.mjs) cover
-the real observed good shell (three webviews, five root children) and the
-bad shell (zero webviews, two root children). They run in build CI but do
-not replace the authenticated workstation probe. Before any upgrade,
+the historical good shell and the broken 26.1021 shell, plus the 2026-10-26
+case where the only webview belongs to the invisible codex-sandbox. They
+run in build CI but do not replace authenticated workstation verification. Before any upgrade,
 retain an installable, checksum-verified .deb of the known-good version
 outside temporary GitHub Actions artifacts. If the candidate fails, keep
 (or reinstall) the known-good package; never classify a build-only CI

@@ -3,17 +3,18 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { classify, fetchLocalTargets, inspectShell, isLocalDebuggerUrl, isPrimaryShellTarget, parseArgs } from './check-chat-boot.mjs';
+import { SHELL_SNAPSHOT_EXPR, classify, fetchLocalTargets, inspectShell, isLocalDebuggerUrl, isPrimaryShellTarget, parseArgs } from './check-chat-boot.mjs';
 
 const shell = { id: 'primary', type: 'page', url: 'app://-/index.html' };
 const overlay = { id: 'overlay', type: 'page', url: 'app://-/overlay.html' };
 const brave = { id: 'browser', type: 'page', url: 'https://learn.chatgpt.com/' };
 
-test('known-good primary shell mounts chat webviews', () => {
+test('known-good primary shell includes the actual interactive composer', () => {
   const result = classify([shell, overlay], new Map([
-    ['primary', { webviews: 3, rootChildren: 5, runtimeIdentity: true }],
+    ['primary', { webviews: 3, rootChildren: 5, runtimeIdentity: true, composerReady: true, sendControlReady: true }],
     ['overlay', { webviews: 0, rootChildren: 2 }]
   ]));
   assert.equal(result.ok, true);
@@ -25,7 +26,7 @@ test('26.1021 stuck shell fails even though React exists', () => {
     ['primary', { webviews: 0, rootChildren: 2, runtimeIdentity: true }]
   ]));
   assert.equal(result.ok, false);
-  assert.equal(result.reason, 'shell_without_chat_webview');
+  assert.equal(result.reason, 'chat_composer_unavailable');
 });
 
 test('partial overlay webview is insufficient for a primary chat mount', () => {
@@ -192,7 +193,7 @@ test('one-shot CLI terminates after verified PASS even if CDP WebSocket refuses 
     "globalThis.WebSocket = class {",
     "  constructor() { this.listeners={}; }",
     "  addEventListener(event, fn) { this.listeners[event]=fn; if (event==='open') queueMicrotask(fn); }",
-    "  send() { queueMicrotask(() => this.listeners.message?.({data:JSON.stringify({id:17,result:{result:{value:JSON.stringify({webviews:1,rootChildren:4,runtimeIdentity:true})}}})})); }",
+    "  send() { queueMicrotask(() => this.listeners.message?.({data:JSON.stringify({id:17,result:{result:{value:JSON.stringify({webviews:1,rootChildren:4,runtimeIdentity:true,composerReady:true,sendControlReady:true})}}})})); }",
     "  close() { /* Simulate CDP server never acknowledging close. */ }",
     "};",
   ].join(String.fromCharCode(10));
@@ -202,4 +203,58 @@ test('one-shot CLI terminates after verified PASS even if CDP WebSocket refuses 
   });
   assert.equal(r.status, 0, r.stderr || String(r.error));
   assert.match(r.stdout, /PASS chat_boot /);
+});
+
+// Regression: the hidden codex-sandbox webview is not the interactive chat UI.
+// A mounted shell with a sandbox alone must not become LIVE_ACCEPTED.
+test('hidden sandbox webview cannot impersonate an interactive chat composer', () => {
+  const result = classify([shell], new Map([['primary', {
+    webviews: 1, rootChildren: 5, runtimeIdentity: true,
+    composerReady: false, sendControlReady: false
+  }]]));
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'chat_composer_unavailable');
+});
+
+// Modern ChatGPT renders its composer in the primary app:// document, not
+// necessarily inside a webview. The sandbox should be optional.
+test('working interactive composer passes without any sandbox webviews', () => {
+  const result = classify([shell], new Map([['primary', {
+    webviews: 0, rootChildren: 5, runtimeIdentity: true,
+    composerReady: true, sendControlReady: true
+  }]]));
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, 'chat_shell_mounted');
+});
+
+test('real browser snapshot rejects hidden composer even when sandbox webview is mounted', () => {
+  const element = (width, height, opacity = '1') => ({
+    getBoundingClientRect: () => ({ width, height }),
+    opacity
+  });
+  const sandbox = element(1, 150);
+  const hiddenComposer = element(0, 0);
+  const visibleComposer = element(400, 36);
+  const sendButton = element(28, 28);
+  const context = composer => ({
+    window: {
+      codexWindowType: 'main', electronBridge: {}, __codexRoot: {},
+      getComputedStyle: e => ({ display:'block', visibility:'visible',
+        pointerEvents:'auto', opacity:e.opacity })
+    },
+    document: {
+      querySelector: selector => selector === '#root' ? { children:[1,2,3,4,5] } : null,
+      querySelectorAll: selector => selector === 'webview' ? [sandbox] :
+        selector.includes('[role="textbox"]') ? [composer] :
+        selector.includes('button[aria-label') ? [sendButton] : []
+    }
+  });
+  const hidden = JSON.parse(runInNewContext(SHELL_SNAPSHOT_EXPR, context(hiddenComposer)));
+  const visible = JSON.parse(runInNewContext(SHELL_SNAPSHOT_EXPR, context(visibleComposer)));
+  assert.equal(hidden.webviews, 1);
+  assert.equal(hidden.composerReady, false);
+  assert.equal(hidden.sendControlReady, true);
+  assert.equal(classify([shell], new Map([['primary', hidden]])).ok, false);
+  assert.equal(visible.composerReady, true);
+  assert.equal(classify([shell], new Map([['primary', visible]])).ok, true);
 });
