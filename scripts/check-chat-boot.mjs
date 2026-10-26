@@ -8,10 +8,20 @@ const ROOT_MIN = 3;
 export const SHELL_SNAPSHOT_EXPR = `JSON.stringify((() => {
   const visible = element => {
     const rect = element.getBoundingClientRect();
-    const style = window.getComputedStyle(element);
-    return rect.width >= 20 && rect.height >= 12 &&
-      style.visibility !== 'hidden' && style.display !== 'none' &&
-      style.pointerEvents !== 'none' && Number(style.opacity) > 0;
+    if (rect.width < 20 || rect.height < 12) return false;
+    const ownStyle = window.getComputedStyle(element);
+    if (ownStyle.visibility !== 'visible' || ownStyle.display === 'none' ||
+        ownStyle.pointerEvents === 'none' || Number(ownStyle.opacity) <= 0 ||
+        element.hidden || element.inert) return false;
+    // Ancestor opacity and inertness cannot be overridden by children.
+    // But pointer-events:none CAN be overridden by pointer-events:auto on
+    // the composer (as in ChatGPT's real Tailwind footer).
+    for (let node = element.parentElement; node; node = node.parentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || Number(style.opacity) <= 0 ||
+          node.hidden || node.inert) return false;
+    }
+    return true;
   };
   // A hidden codex-sandbox webview does NOT mean the actual chat is usable.
   // Inspect only UI structure; never read text, tokens, or account data.
@@ -22,11 +32,16 @@ export const SHELL_SNAPSHOT_EXPR = `JSON.stringify((() => {
   const sendControlReady = Array.from(document.querySelectorAll(
     'button[aria-label="Send"]'
   )).some(visible);
+  // While ChatGPT is streaming, Stop temporarily replaces Send.
+  const stopControlReady = Array.from(document.querySelectorAll(
+    'button[aria-label="Stop"]'
+  )).some(visible);
   return {
     webviews: document.querySelectorAll('webview').length,
     rootChildren: document.querySelector('#root')?.children?.length ?? 0,
     composerReady,
     sendControlReady,
+    stopControlReady,
     runtimeIdentity: (typeof window.codexWindowType === 'string' &&
       typeof window.electronBridge === 'object' && !!window.__codexRoot)
   };
@@ -72,7 +87,8 @@ export function classify(targets, snapshots) {
   const unsupportedNode = observed.some(s => s.error === 'node_22_websocket_required');
   const identified = observed.some(s => s.runtimeIdentity === true);
   const mounted = observed.some(s =>
-    s.composerReady === true && s.sendControlReady === true &&
+    s.composerReady === true &&
+    (s.sendControlReady === true || s.stopControlReady === true) &&
     Number.isInteger(s.rootChildren) && s.rootChildren >= ROOT_MIN &&
     s.runtimeIdentity === true);
   return {
@@ -83,7 +99,9 @@ export function classify(targets, snapshots) {
       observed.every(s => s.error) ? 'shell_inspection_failed' :
       !identified ? 'shell_identity_unverified' : 'chat_composer_unavailable',
     shellCount: shells.length,
-    interactiveComposer: observed.some(s => s.composerReady === true && s.sendControlReady === true),
+    interactiveComposer: observed.some(s => s.composerReady === true &&
+      (s.sendControlReady === true || s.stopControlReady === true)),
+    generationActive: observed.some(s => s.composerReady === true && s.stopControlReady === true),
     maxWebviews: Math.max(0, ...observed.map(s => Number(s.webviews) || 0)),
     maxRootChildren: Math.max(0, ...observed.map(s => Number(s.rootChildren) || 0))
   };

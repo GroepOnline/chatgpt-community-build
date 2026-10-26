@@ -126,7 +126,8 @@ Node versions fail with an explicit capability error.
 
 This command probes IPv4 and IPv6 loopback (127.0.0.1 and ::1) only, requires an app:// desktop shell,
 and checks Codex runtime identity plus a visible **Ask ChatGPT** editable
-composer and **Send** control in the primary app shell. A hidden 1-pixel
+composer and **Send** control (or **Stop** while generating) in the primary
+app shell. A hidden 1-pixel
 codex-sandbox webview cannot satisfy this gate. CDP target discovery reads
 URL metadata only to identify the app shell; the probe never stores or
 prints URLs, chat messages, tokens, or account settings. Exit 0 and

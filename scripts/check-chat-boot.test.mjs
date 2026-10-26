@@ -246,7 +246,7 @@ test('real browser snapshot rejects hidden composer even when sandbox webview is
       querySelector: selector => selector === '#root' ? { children:[1,2,3,4,5] } : null,
       querySelectorAll: selector => selector === 'webview' ? [sandbox] :
         selector.includes('[role="textbox"]') ? [composer] :
-        selector.includes('button[aria-label') ? [sendButton] : []
+        selector.includes('button[aria-label="Send"]') ? [sendButton] : []
     }
   });
   const hidden = JSON.parse(runInNewContext(SHELL_SNAPSHOT_EXPR, context(hiddenComposer)));
@@ -257,4 +257,91 @@ test('real browser snapshot rejects hidden composer even when sandbox webview is
   assert.equal(classify([shell], new Map([['primary', hidden]])).ok, false);
   assert.equal(visible.composerReady, true);
   assert.equal(classify([shell], new Map([['primary', visible]])).ok, true);
+});
+
+// CodeRabbit regression: CSS opacity on a parent can hide an otherwise
+// visible, nonzero-size interactive chat control.
+test('composer under opacity-zero ancestor cannot pass readiness', () => {
+  const parent = { opacity:'0', parentElement:null };
+  const item = (width, height) => ({
+    opacity:'1', parentElement:parent, getBoundingClientRect:()=>({width,height})
+  });
+  const context = {
+    window: {
+      codexWindowType:'main',electronBridge:{},__codexRoot:{},
+      getComputedStyle: e => ({display:'block',visibility:'visible',pointerEvents:'auto',opacity:e.opacity})
+    },
+    document: {
+      querySelector:selector => selector==='#root' ? {children:[1,2,3,4,5]} : null,
+      querySelectorAll:selector => selector==='webview' ? [{}] :
+        selector.includes('[role="textbox"]') ? [item(480,36)] :
+        selector.includes('button[aria-label') ? [item(28,28)] : []
+    }
+  };
+  const snapshot=JSON.parse(runInNewContext(SHELL_SNAPSHOT_EXPR,context));
+  assert.equal(snapshot.composerReady,false);
+  assert.equal(snapshot.sendControlReady,false);
+  assert.equal(classify([shell],new Map([['primary',snapshot]])).ok,false);
+});
+
+// Tailwind's pointer-events-none footer intentionally contains
+// pointer-events-auto children. The parent alone must not fail readiness.
+test('interactive child overrides pointer-events-none on footer ancestor', () => {
+  const parent = { opacity:'1', pointer:'none', parentElement:null };
+  const item = (width,height) => ({
+    opacity:'1',pointer:'auto',parentElement:parent,
+    getBoundingClientRect:()=>({width,height})
+  });
+  const context = {
+    window:{
+      codexWindowType:'main',electronBridge:{},__codexRoot:{},
+      getComputedStyle:e=>({display:'block',visibility:'visible',pointerEvents:e.pointer,opacity:e.opacity})
+    },
+    document:{
+      querySelector:s=>s==='#root'?{children:[1,2,3,4,5]}:null,
+      querySelectorAll:s=>s==='webview'?[{}]:
+        s.includes('[role="textbox"]')?[item(484,36)]:
+        s.includes('button[aria-label="Send"]')?[item(28,28)]:[]
+    }
+  };
+  const snapshot=JSON.parse(runInNewContext(SHELL_SNAPSHOT_EXPR,context));
+  assert.equal(snapshot.composerReady,true);
+  assert.equal(snapshot.sendControlReady,true);
+  assert.equal(classify([shell],new Map([['primary',snapshot]])).ok,true);
+});
+
+// In a streamed reply the visible submit button is replaced by Stop.
+// This is a mounted interactive composer, but not proof of backend success.
+test('generating chat uses visible Stop action instead of Send', () => {
+  const result = classify([shell],new Map([['primary',{
+    webviews:1,rootChildren:5,runtimeIdentity:true,composerReady:true,
+    sendControlReady:false,stopControlReady:true
+  }]]));
+  assert.equal(result.ok,true);
+  assert.equal(result.interactiveComposer,true);
+  assert.equal(result.generationActive,true);
+});
+
+// Exercise the real CDP expression, not only a manually constructed snapshot.
+test('browser snapshot reads Stop during generation with no visible Send', () => {
+  const element = (w,h) => ({
+    parentElement:null, getBoundingClientRect:()=>({width:w,height:h})
+  });
+  const context={
+    window:{codexWindowType:'main',electronBridge:{},__codexRoot:{},
+      getComputedStyle:()=>({display:'block',visibility:'visible',pointerEvents:'auto',opacity:'1'})},
+    document:{
+      querySelector:s=>s==='#root'?{children:[1,2,3,4,5]}:null,
+      querySelectorAll:s=>s==='webview'?[element(1,150)]:
+        s.includes('[role="textbox"]')?[element(484,36)]:
+        s.includes('button[aria-label="Stop"]')?[element(28,28)]:[]
+    }
+  };
+  const snapshot=JSON.parse(runInNewContext(SHELL_SNAPSHOT_EXPR,context));
+  assert.equal(snapshot.composerReady,true);
+  assert.equal(snapshot.sendControlReady,false);
+  assert.equal(snapshot.stopControlReady,true);
+  const result=classify([shell],new Map([['primary',snapshot]]));
+  assert.equal(result.ok,true);
+  assert.equal(result.generationActive,true);
 });
