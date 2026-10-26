@@ -3,8 +3,11 @@
 The repository is public. Only **standard** GitHub-hosted runners are used:
 ubuntu-24.04 (AMD64), ubuntu-24.04-arm (ARM64). They are free for public
 repositories. The workflow avoids large/premium runners and keeps expensive,
-temporary Actions artifacts for only one day. GitHub Releases hold the actual
-public download assets, not an Actions artifact that expires.
+temporary Actions artifacts for only one day. GitHub Release drafts hold the durable, access-restricted package assets,
+not an Actions artifact that expires. After verifying all release assets, the
+release workflow deletes only its two exact, matching temporary Actions
+artifacts from the originating build run. This reduces storage accumulation;
+the public-repo runner minutes are free, but artifact storage is quota-limited.
 
 ## What runs without the laptop
 
