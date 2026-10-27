@@ -67,6 +67,8 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/codex-desktop-linux" rev-parse HEAD)" = "$UPSTREAM_COMMIT"
           git -C "$RUNNER_TEMP/codex-desktop-linux" apply --check "$GITHUB_WORKSPACE/patches/native-model-picker.patch"
           git -C "$RUNNER_TEMP/codex-desktop-linux" apply "$GITHUB_WORKSPACE/patches/native-model-picker.patch"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" apply --check "$GITHUB_WORKSPACE/patches/native-community-settings.patch"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" apply "$GITHUB_WORKSPACE/patches/native-community-settings.patch"
           cp .github/community-build/features.json "$RUNNER_TEMP/codex-desktop-linux/linux-features/features.json"
       - name: Validate manifest and run upstream feature tests
         working-directory: ${{ runner.temp }}/codex-desktop-linux
@@ -74,6 +76,7 @@ jobs:
           CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/codex-desktop-linux/linux-features/features.json
         run: |
           set -euo pipefail
+          node "$GITHUB_WORKSPACE/scripts/community-settings-compiler.test.mjs"
           node scripts/lib/linux-features.js --enabled | LC_ALL=C sort > "$RUNNER_TEMP/enabled-features.txt"
           diff -u <(jq -r '.enabled[]' "$GITHUB_WORKSPACE/.github/community-build/features.json" | LC_ALL=C sort) \
             "$RUNNER_TEMP/enabled-features.txt"

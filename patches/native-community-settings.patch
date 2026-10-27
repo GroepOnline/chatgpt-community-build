@@ -1,0 +1,60 @@
+diff --git a/linux-features/community-features-in-gui-settings/patch.js b/linux-features/community-features-in-gui-settings/patch.js
+index 5cf65d83..10710907 100644
+--- a/linux-features/community-features-in-gui-settings/patch.js
++++ b/linux-features/community-features-in-gui-settings/patch.js
+@@ -15,7 +15,46 @@ const unique = (source, pattern) => {
+   return matches.length === 1 ? matches[0] : null;
+ };
+ 
++function modernSettingsContract(source) {
++  // React-compiler General settings in signed ChatGPT Linux 26.1021+.
++  // The previous macMenuBar-only settings owner no longer exists.
++  if (!source.includes("settings.general.groupTitle") ||
++      !source.includes("settings.openSourceLicenses.view")) return null;
++  const pageMarker = unique(source, /slug:`general-settings`/g);
++  if (!pageMarker) return null;
++  const pageStart = source.lastIndexOf("function ", pageMarker.index);
++  const pageEnd = pageStart < 0 ? -1 : findMatchingBrace(source, source.indexOf("{", pageStart));
++  if (pageEnd < pageMarker.index) return null;
++  const page = source.slice(pageStart, pageEnd + 1);
++  if (!/^function [A-Za-z_$][\w$]*\(\)\{/.test(page)) return null;
++  const render = unique(page, /\(0,([\w$]+)\.jsxs\)\(([\w$]+),\{title:([\w$]+),children:\[([^\]]+)\]\}\)/g);
++  if (!render) return null;
++  const [jsx, children] = [render[1], render[4]];
++  const injected = `(0,${jsx}.jsx)(${UI},{})`;
++  const childList = children.startsWith(injected + ",") ? children.slice(injected.length + 1) : children;
++  if (!/^[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*$/.test(childList)) return null;
++  const rowControl = unique(source, /\(0,([\w$]+)\.jsx\)\(([\w$]+),\{label:[\w$]+,description:[\w$]+,control:\(0,\1\.jsx\)\(([\w$]+),\{color:`secondary`,size:`toolbar`/g);
++  if (!rowControl || rowControl[1] !== jsx) return null;
++  const reactPlatform = unique(source, /function codexLinuxStartMinimizedSetting\(\)\{let React=([\w$]+)\(\),\{platform\}=\s*([\w$]+)\(\)/g);
++  if (!reactPlatform) return null;
++  const intlStart = source.indexOf("function codexLinuxReasoningVisibilitySetting(){");
++  if (intlStart < 0 || source.indexOf("function codexLinuxReasoningVisibilitySetting(){", intlStart + 1) >= 0) return null;
++  const intlEnd = findMatchingBrace(source, source.indexOf("{", intlStart));
++  const intlHook = source.slice(intlStart, intlEnd + 1).match(/,intl=([\w$]+)\(\),label=/)?.[1];
++  if (!intlHook) return null;
++  const sectionStacks = [...source.matchAll(/\(0,([\w$]+)\.jsxs\)\(([\w$]+),\{children:\[t,\(0,\1\.jsx\)\(\2\.Content,\{children:\(0,\1\.jsxs\)\(([\w$]+),\{children:/g)]
++    .filter((match) => match[1] === jsx);
++  if (sectionStacks.length < 1 || new Set(sectionStacks.map(m => m[2] + ":" + m[3])).size !== 1) return null;
++  return {
++    row: rowControl[2], button: rowControl[3], section: sectionStacks[0][2],
++    stack: sectionStacks[0][3], reactFactory: reactPlatform[1], platformHook: reactPlatform[2],
++    intlHook, jsx, render,
++  };
++}
++
+ function settingsContract(source) {
++  const modern = modernSettingsContract(source);
++  if (modern) return modern;
+   const owner = unique(source, new RegExp(`function (${ID})\\((${ID})\\)\\{.{0,300}?\\{platform:(${ID})\\}=(${ID})\\(\\),(${ID})=(${ID})\\((${ID})\\.macMenuBarEnabled\\);if\\(\\3!==\`macOS\`\\)return null;`, "g"));
+   if (!owner) return null;
+   const end = findMatchingBrace(source, source.indexOf("{", owner.index));
+@@ -72,7 +111,7 @@ function applySettingsPatch(extractedDir, context = {}) {
+   for (const name of fs.readdirSync(assetsDir)) {
+     if (!name.endsWith(".js")) continue;
+     const source = fs.readFileSync(path.join(assetsDir, name), "utf8");
+-    if (source.includes("settings.general.macMenuBar.description") && source.includes(".macMenuBarEnabled")) {
++    if (source.includes("settings.general.groupTitle") && source.includes("settings.openSourceLicenses.view") && source.includes("slug:`general-settings`")) {
+       candidates.push({ name, source });
+     }
+   }

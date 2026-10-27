@@ -19,7 +19,7 @@ The patch is applied to Community source before packaging; generated application
 bundles are not edited by hand. OpenAI software,
 product names, and marks remain subject to their own terms and licenses.
 
-The manifest enables 38 of the 48 upstream Linux feature IDs. Ten are
+The manifest enables 39 of the 48 upstream Linux feature IDs. Nine are
 excluded on purpose: `community-profile-isolation` would split the deliberately
 shared `~/.codex` home; `account-switcher` could change the shared session
 authentication while another client is working; `shared-app-server-socket`
@@ -30,10 +30,7 @@ Community binary initializes successfully when only that hook is disabled.
 Keep it excluded until a protocol-compatible implementation has been
 tested end-to-end; `shallow-repository-watches`
 conflicts with the enabled `directory-only-working-tree-watch`, the functional
-successor for the working-tree watch route; `community-features-in-gui-settings`
-cannot apply to the 26.1021.22027 bundle because its native General settings
-contract is missing or ambiguous there (upstream ships it `defaultEnabled:
-false`); `remote-mobile-control` rewrites the local app-server spawn
+successor for the working-tree watch route; `remote-mobile-control` rewrites the local app-server spawn
 arguments in the desktop's startup policy-read path
 (`codexLinuxRemoteMobileLocalAppServerArgs` in `application-network-startup`)
 and with it the desktop pauses on a non-retryable `policy-read
@@ -42,7 +39,9 @@ so it stays off until upstream repairs that interaction;
 `flatpak-chrome-native-messaging`, `thorium-chrome-plugin` and
 `omarchy-theme` target runtimes that are not installed;
 and `nix-store-bundled-marketplace-permissions` applies to Nix builds only.
-The `ui-tweaks` settings enable six options: show model choices by default
+The `community-features-in-gui-settings` section now uses the native React-compiler
+General Settings contract (with fail-closed anchors), displaying the local
+feature catalog inside Settings > General. The `ui-tweaks` settings enable six options: show model choices by default
 (native composer mode), allow UI font sizes up to 24 px, allow a custom font
 stack, restore the selected-text “More details” action, Ctrl+Enter annotation
 submit, and the dock icon tweak. The suggested-prompts tweak stays off: the

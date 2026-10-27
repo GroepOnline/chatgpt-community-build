@@ -34,7 +34,7 @@ function fixture(corrupt=false) {
     sourceRepository:'GroepOnline/chatgpt-community-build',
     upstreamCommit:'fc533a9346095e74d47c506e3103b7282c5c54d9',
     buildCommit:'a'.repeat(40),buildRunId:'40200351596',
-    featureCount:38,runtimeAccepted:false,
+    featureCount:39,runtimeAccepted:false,
     packageAssets:{amd64:deb,arm64:'codex-desktop_'+version+'_arm64.deb'}
   };
   writeFileSync(join(assets,'release-metadata.json'),JSON.stringify(metadata,null,2)+'\n');

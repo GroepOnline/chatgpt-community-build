@@ -17,11 +17,11 @@ test('checksums reject duplicate names and path traversal', () => {
   assert.throws(()=>parseChecksums(h+'  ../evil\n'));
   assert.throws(()=>parseChecksums(h+' *build.deb\n'));
 });
-test('feature manifest must match 38 supported nonduplicated features', () => {
-  const expected=Array.from({length:38},(_,i)=>'feature-'+i);
+test('feature manifest must match 39 supported nonduplicated features', () => {
+  const expected=Array.from({length:39},(_,i)=>'feature-'+i);
   assert.doesNotThrow(()=>assertFeatureSet({enabled:expected},{enabled:expected}));
   assert.throws(()=>assertFeatureSet({enabled:[...expected,'shared-app-server-socket']},{enabled:[...expected,'shared-app-server-socket']}));
-  assert.throws(()=>assertFeatureSet({enabled:[...expected.slice(0,37),expected[0]]},{enabled:expected}));
+  assert.throws(()=>assertFeatureSet({enabled:[...expected.slice(0,38),expected[0]]},{enabled:expected}));
   assert.throws(()=>assertFeatureSet({enabled:expected.slice(1)},{enabled:expected}));
 });
 test('release validation fails closed before invoking dpkg on bad metadata', () => {
