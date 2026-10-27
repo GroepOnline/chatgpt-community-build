@@ -6,6 +6,12 @@ by OpenAI. The workflow fetches the signed official Linux package from its
 APT repository, verifies the repository metadata, and applies the Linux
 Community patches before creating a Debian package.
 
+The signed OpenAI Linux 26.1021.22027 package is locked to the SHA-256
+proven in release community-v2026.10.26.61. Newer official Linux packages have
+seven incompatible optional patch contracts; upgrades wait for matching adapters.
+The locked upstream download re-verifies byte SHA-256, size, package identity
+and architecture; it is not an auto-update to the latest upstream package.
+
 The build is pinned to [`ilysenko/codex-desktop-linux` commit
 `fc533a9346095e74d47c506e3103b7282c5c54d9`](https://github.com/ilysenko/codex-desktop-linux/tree/fc533a9346095e74d47c506e3103b7282c5c54d9).
 That upstream project is distributed under the [MIT License](https://github.com/ilysenko/codex-desktop-linux/blob/fc533a9346095e74d47c506e3103b7282c5c54d9/LICENSE).
