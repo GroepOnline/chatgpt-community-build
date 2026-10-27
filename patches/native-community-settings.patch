@@ -1,8 +1,8 @@
 diff --git a/linux-features/community-features-in-gui-settings/patch.js b/linux-features/community-features-in-gui-settings/patch.js
-index 5cf65d83..1e64780b 100644
+index 5cf65d83..10710907 100644
 --- a/linux-features/community-features-in-gui-settings/patch.js
 +++ b/linux-features/community-features-in-gui-settings/patch.js
-@@ -15,7 +15,45 @@ const unique = (source, pattern) => {
+@@ -15,7 +15,46 @@ const unique = (source, pattern) => {
    return matches.length === 1 ? matches[0] : null;
  };
  
@@ -17,6 +17,7 @@ index 5cf65d83..1e64780b 100644
 +  const pageEnd = pageStart < 0 ? -1 : findMatchingBrace(source, source.indexOf("{", pageStart));
 +  if (pageEnd < pageMarker.index) return null;
 +  const page = source.slice(pageStart, pageEnd + 1);
++  if (!/^function [A-Za-z_$][\w$]*\(\)\{/.test(page)) return null;
 +  const render = unique(page, /\(0,([\w$]+)\.jsxs\)\(([\w$]+),\{title:([\w$]+),children:\[([^\]]+)\]\}\)/g);
 +  if (!render) return null;
 +  const [jsx, children] = [render[1], render[4]];
@@ -48,7 +49,7 @@ index 5cf65d83..1e64780b 100644
    const owner = unique(source, new RegExp(`function (${ID})\\((${ID})\\)\\{.{0,300}?\\{platform:(${ID})\\}=(${ID})\\(\\),(${ID})=(${ID})\\((${ID})\\.macMenuBarEnabled\\);if\\(\\3!==\`macOS\`\\)return null;`, "g"));
    if (!owner) return null;
    const end = findMatchingBrace(source, source.indexOf("{", owner.index));
-@@ -72,7 +110,7 @@ function applySettingsPatch(extractedDir, context = {}) {
+@@ -72,7 +111,7 @@ function applySettingsPatch(extractedDir, context = {}) {
    for (const name of fs.readdirSync(assetsDir)) {
      if (!name.endsWith(".js")) continue;
      const source = fs.readFileSync(path.join(assetsDir, name), "utf8");
