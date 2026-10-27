@@ -77,6 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           node "$GITHUB_WORKSPACE/scripts/community-settings-compiler.test.mjs"
+          node --test "$GITHUB_WORKSPACE/scripts/download-pinned-upstream.test.mjs"
           node scripts/lib/linux-features.js --enabled | LC_ALL=C sort > "$RUNNER_TEMP/enabled-features.txt"
           diff -u <(jq -r '.enabled[]' "$GITHUB_WORKSPACE/.github/community-build/features.json" | LC_ALL=C sort) \
             "$RUNNER_TEMP/enabled-features.txt"
@@ -95,11 +96,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "upstream/${{ matrix.arch }}"
-          package="$(node scripts/lib/upstream-linux-package.js \
+          node "$GITHUB_WORKSPACE/scripts/download-pinned-upstream.mjs" \
+            --arch "${{ matrix.arch }}" \
             --output-dir "upstream/${{ matrix.arch }}" \
-            --metadata "upstream/${{ matrix.arch }}.json" \
-            --key-base64 assets/openai-codex-linux-repository-key.gpg.base64 \
-            --arch "${{ matrix.arch }}")"
+            --metadata "upstream/${{ matrix.arch }}.json"
+          package="upstream/${{ matrix.arch }}/chatgpt_26.1021.22027_${{ matrix.arch }}.deb"
+          test -s "$package"
           echo "package=$package" >> "$GITHUB_OUTPUT"
       - name: Build app and native feature helpers
         working-directory: ${{ runner.temp }}/codex-desktop-linux

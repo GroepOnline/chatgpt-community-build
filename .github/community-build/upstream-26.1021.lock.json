@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "package": "chatgpt",
+  "version": "26.1021.22027",
+  "repository": "https://persistent.oaistatic.com/codex-app-prod/linux/deb",
+  "signedEvidence": {
+    "sourceRelease": "community-v2026.10.26.61",
+    "sourceBuildRunId": "40282982987",
+    "sourceCommit": "47a95333c715694177e0bf3a2e66f2723399ae00"
+  },
+  "architectures": {
+    "amd64": {
+      "repositoryPath": "pool/main/c/chatgpt/chatgpt_26.1021.22027_amd64.deb",
+      "sha256": "eb0831c734f154f93f8ebcf0e17d118da0dea7dc1737dc61a1e71444375bf190",
+      "size": 526398010
+    },
+    "arm64": {
+      "repositoryPath": "pool/main/c/chatgpt/chatgpt_26.1021.22027_arm64.deb",
+      "sha256": "68de1ec44066871e4177ba1ca793ebee6ba238397f13c794e45b14941c1261fb",
+      "size": 502255030
+    }
+  }
+}
