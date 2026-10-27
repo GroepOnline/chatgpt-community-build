@@ -65,7 +65,6 @@ function download() {
   const output=resolve(fields['--output-dir']);
   const target=join(output,basename(info.repositoryPath));
   mkdirSync(output,{recursive:true});
-  if(statSync(output).isDirectory()===false)throw Error('Invalid output');
   const temporary=mkdtempSync(join(output,'.pinned-'));
   const downloaded=join(temporary,basename(info.repositoryPath));
   try {
