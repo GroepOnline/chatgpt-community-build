@@ -40,8 +40,8 @@ const field=(deb,f)=>execFileSync('dpkg-deb',['--field',deb,f],{encoding:'utf8',
 const equal=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&
   JSON.stringify([...a].sort())===JSON.stringify([...b].sort());
 export function assertFeatureSet(flags,expected) {
-  if (!flags || !Array.isArray(flags.enabled) || flags.enabled.length!==38 ||
-      new Set(flags.enabled).size!==38 || flags.enabled.includes('shared-app-server-socket') ||
+  if (!flags || !Array.isArray(flags.enabled) || flags.enabled.length!==39 ||
+      new Set(flags.enabled).size!==39 || flags.enabled.includes('shared-app-server-socket') ||
       !equal(flags.enabled,expected.enabled)) throw new Error('Unsupported Community feature set');
 }
 function validateInput(dir,arch,version,expected) {
@@ -58,13 +58,16 @@ function validateInput(dir,arch,version,expected) {
   const features=json(file(dir,'features.json'));
   const info=json(file(dir,'build-info.json'));
   const metadata=json(file(dir,'upstream-signed-metadata.json'));
+  const upstreamVersion=info.upstreamLinuxPackage?.version;
   assertFeatureSet(features,expected);
   if (!equal(info.linuxFeatures?.enabled,features.enabled)||
       info.source?.commit!==UPSTREAM||
       info.upstreamLinuxPackage?.architecture!==arch||
-      info.upstreamLinuxPackage?.version!=='26.1021.22027'||
-      !metadata || typeof metadata!=='object') throw new Error('Signed upstream/feature provenance mismatch');
-  return {version:v,deb};
+      !/^\d+\.\d+\.\d+$/.test(upstreamVersion ?? '')||
+      metadata?.package!=='chatgpt'||metadata?.version!==upstreamVersion||
+      metadata?.architecture!==arch||metadata?.sha256!==info.upstreamLinuxPackage?.sha256||
+      !/^[0-9a-f]{64}$/.test(metadata?.sha256 ?? '')) throw new Error('Signed upstream/feature provenance mismatch');
+  return {version:v,deb,upstreamVersion};
 }
 export function validateStaged(dir,tag,arch) {
   if (!/^community-v\d{4}\.\d{2}\.\d{2}\.\d+$/.test(tag)) throw new Error('Invalid release tag');
@@ -72,7 +75,7 @@ export function validateStaged(dir,tag,arch) {
   const metadata=json(file(dir,'release-metadata.json'));
   if (metadata.tag!==tag||metadata.version!==tag.slice(11)||
       metadata.sourceRepository!==REPO||metadata.upstreamCommit!==UPSTREAM||
-      metadata.runtimeAccepted!==false||metadata.featureCount!==38||
+      metadata.runtimeAccepted!==false||metadata.featureCount!==39||
       !/^[0-9a-f]{40}$/.test(metadata.buildCommit)||
       !/^\d+$/.test(String(metadata.buildRunId))) throw new Error('Release provenance invalid');
   const debname='codex-desktop_'+metadata.version+'_'+arch+'.deb';
@@ -105,6 +108,7 @@ function assemble(o) {
   const a=validateInput(amd,'amd64',null,source);
   const b=validateInput(arm,'arm64',a.version,source);
   if (!a.version.endsWith('.'+number)) throw new Error('Run number/version mismatch');
+  if (a.upstreamVersion!==b.upstreamVersion) throw new Error('Architecture upstream versions differ');
   mkdirSync(out,{recursive:true,mode:0o700});
   if (readdirSync(out).length) throw new Error('Release folder must be empty');
   for (const [input,arch,c] of [[amd,'amd64',a],[arm,'arm64',b]]) {
@@ -116,15 +120,15 @@ function assemble(o) {
   const meta={
     schema:1,tag:releaseTag(a.version),version:a.version,sourceRepository:REPO,
     buildCommit:sha,buildRunId:id,upstreamCommit:UPSTREAM,
-    upstreamPackageVersion:'26.1021.22027',featureCount:38,runtimeAccepted:false,
+    upstreamPackageVersion:a.upstreamVersion,featureCount:39,runtimeAccepted:false,
     packageAssets:{amd64:basename(a.deb),arm64:basename(b.deb)}
   };
   writeFileSync(join(out,'release-metadata.json'),JSON.stringify(meta,null,2)+'\n');
   const notes=[
     '# ChatGPT Community Linux '+a.version,'',
     'Verified GitHub release draft from a trusted-branch build. Public publication requires verified redistribution rights.',
-    'Architectures: amd64 and arm64. Enabled Community features: 38.',
-    'Official signed upstream package: 26.1021.22027.',
+    'Architectures: amd64 and arm64. Enabled Community features: 39.',
+    'Official signed upstream package: '+a.upstreamVersion+'.',
     'Build commit: '+sha,
     'CI: https://github.com/'+REPO+'/actions/runs/'+id,'',
     'This cloud build has NOT been installed or desktop-runtime-accepted.',

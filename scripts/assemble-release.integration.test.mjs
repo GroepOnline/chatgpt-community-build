@@ -36,9 +36,9 @@ function setup(armVersion=version) {
     writeFileSync(join(dir,'features.json'),JSON.stringify(manifest));
     writeFileSync(join(dir,'build-info.json'),JSON.stringify({
       source:{commit:source},linuxFeatures:{enabled:manifest.enabled},
-      upstreamLinuxPackage:{version:'26.1021.22027',architecture:arch}
+      upstreamLinuxPackage:{package:'chatgpt',version:'26.1021.22027',architecture:arch,sha256:'a'.repeat(64)}
     }));
-    writeFileSync(join(dir,'upstream-signed-metadata.json'),JSON.stringify({fixtureOnly:true}));
+    writeFileSync(join(dir,'upstream-signed-metadata.json'),JSON.stringify({fixtureOnly:true,package:'chatgpt',version:'26.1021.22027',architecture:arch,sha256:'a'.repeat(64)}));
     writeFileSync(join(dir,'SHA256SUMS'),
       readdirSync(dir).filter(n=>n!=='SHA256SUMS').sort().map(n=>
         sha256(join(dir,n))+'  '+n).join('\n')+'\n');
@@ -68,7 +68,7 @@ test('full two-architecture release assembles and verifies without real OpenAI s
     }
     const meta=JSON.parse(readFileSync(join(out,'release-metadata.json'),'utf8'));
     assert.equal(meta.runtimeAccepted,false);
-    assert.equal(meta.featureCount,38);
+    assert.equal(meta.featureCount,39);
     assert.equal(meta.buildRunId,'40200351596');
     assert.equal(meta.upstreamCommit,source);
     assert.ok(readdirSync(out).includes('SHA256SUMS'));

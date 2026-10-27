@@ -179,7 +179,7 @@ test('pinned 0.164.0 desktop build excludes the incompatible shared app-server s
   const { readFileSync } = await import('node:fs');
   const manifest = JSON.parse(readFileSync(new URL('../.github/community-build/features.json', import.meta.url), 'utf8'));
   assert.equal(manifest.enabled.includes('shared-app-server-socket'), false);
-  assert.equal(manifest.enabled.length, 38);
+  assert.equal(manifest.enabled.length, 39);
 });
 
 
