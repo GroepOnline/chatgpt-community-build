@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Deliberately hold a previously signed OpenAI Linux payload while optional
 // Community patches are incompatible with the newer stable API/renderer.
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, statSync, renameSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, openSync, fstatSync, readSync, closeSync, constants, renameSync, rmSync } from 'node:fs';
 import { resolve, join, basename, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -26,10 +26,23 @@ export function verifyPinnedLock(value) {
   return value;
 }
 export function verifyPackageBytes(file,expected) {
-  if (statSync(file).size!==expected.size) throw Error('Pinned package size mismatch');
-  const h=createHash('sha256').update(readFileSync(file)).digest('hex');
-  if (h!==expected.sha256) throw Error('Pinned package checksum mismatch');
-  return h;
+  // Open the package once; fstat and hashing share one file descriptor.
+  // O_NOFOLLOW prevents a symlink swap from redirecting the verification.
+  const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW);
+  try {
+    const info=fstatSync(fd);
+    if(!info.isFile() || info.size!==expected.size) throw Error('Pinned package size mismatch');
+    const hash=createHash('sha256'), buffer=Buffer.allocUnsafe(1024*1024);
+    let received=0;
+    while(received<info.size){
+      const count=readSync(fd,buffer,0,Math.min(buffer.length,info.size-received),received);
+      if(count<=0)throw Error('Pinned package truncated');
+      hash.update(buffer.subarray(0,count));received+=count;
+    }
+    const digest=hash.digest('hex');
+    if(digest!==expected.sha256) throw Error('Pinned package checksum mismatch');
+    return digest;
+  } finally {closeSync(fd)}
 }
 export function metadataFor(arch, value=lock) {
   verifyPinnedLock(value);
@@ -56,9 +69,13 @@ function download() {
   const temporary=mkdtempSync(join(output,'.pinned-'));
   const downloaded=join(temporary,basename(info.repositoryPath));
   try {
+    // URL is a literal trusted endpoint, never constructed from downloaded metadata.
+    const url=arch==='amd64'
+      ? 'https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1021.22027_amd64.deb'
+      : 'https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1021.22027_arm64.deb';
     execFileSync('curl',['--fail','--location','--silent','--show-error',
       '--retry','3','--connect-timeout','15','--max-time','360',
-      '--output',downloaded,info.repository+'/'+info.repositoryPath],{stdio:'inherit',timeout:380000});
+      '--output',downloaded,url],{stdio:'inherit',timeout:380000});
     verifyPackageBytes(downloaded,info);
     const field=(name)=>execFileSync('dpkg-deb',['--field',downloaded,name],{encoding:'utf8',timeout:20000}).trim();
     if(field('Package')!=='chatgpt'||field('Version')!==info.version||
