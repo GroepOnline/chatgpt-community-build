@@ -1,0 +1,31 @@
+name: Skysight policy checks
+on:
+  push:
+    paths:
+      - scripts/chefgroep_skysight_policy.py
+      - scripts/test_chefgroep_skysight_policy.py
+      - systemd/user/chefgroep-skysight-policy.service
+      - systemd/user/chefgroep-skysight-policy.timer
+      - .github/workflows/skysight-policy.yml
+  pull_request:
+    paths:
+      - scripts/chefgroep_skysight_policy.py
+      - scripts/test_chefgroep_skysight_policy.py
+      - systemd/user/chefgroep-skysight-policy.service
+      - systemd/user/chefgroep-skysight-policy.timer
+      - .github/workflows/skysight-policy.yml
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Policy regression tests
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s scripts -p 'test_chefgroep_skysight_policy.py' -v

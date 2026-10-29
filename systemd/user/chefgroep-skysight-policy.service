@@ -1,0 +1,8 @@
+[Unit]
+Description=Enforce Chronicle/Skysight capture policy only when already active
+ConditionPathExists=%h/.codex/memories/extensions/chronicle
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/chefgroep-skysight-policy --apply
+TimeoutStartSec=45

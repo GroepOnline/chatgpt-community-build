@@ -1,0 +1,11 @@
+[Unit]
+Description=Detect Skysight policy drift without automatically starting capture
+
+[Timer]
+OnStartupSec=5min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Unit=chefgroep-skysight-policy.service
+
+[Install]
+WantedBy=timers.target
