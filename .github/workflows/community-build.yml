@@ -159,3 +159,133 @@ jobs:
           path: ${{ steps.package.outputs.artifact_dir }}
           retention-days: 1
           if-no-files-found: error
+
+  # PR-only experimental candidate; base branch and release workflow stay unchanged.
+  candidate-26-1023:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'candidate/official-26-1023-51421' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    needs: verify-runtime-gate
+    name: signed-candidate-${{ matrix.arch }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    env:
+      CANDIDATE_UPSTREAM_COMMIT: 3f429798318eb09cec0ccc6ceb460ba6a9ac59f2
+      CANDIDATE_VERSION: 26.1023.51421
+      CODEX_TARGET_ARCH: ${{ matrix.arch }}
+      PACKAGE_WITH_UPDATER: '0'
+      MAX_BUILD_THREADS: '4'
+    steps:
+      - name: Checkout isolated candidate recipe
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Install existing Debian packaging dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev gnupg gpgv patchelf
+      - name: Checkout pinned upstream source with optional Community patches disabled
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/codex-desktop-linux"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" fetch --depth=1 origin "$CANDIDATE_UPSTREAM_COMMIT"
+          git -C "$RUNNER_TEMP/codex-desktop-linux" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/codex-desktop-linux" rev-parse HEAD)" = "$CANDIDATE_UPSTREAM_COMMIT"
+          printf '{"enabled":[]}\n' > "$RUNNER_TEMP/candidate-features.json"
+          cp "$RUNNER_TEMP/candidate-features.json" "$RUNNER_TEMP/codex-desktop-linux/linux-features/features.json"
+      - name: Verify and download exact signed OpenAI candidate
+        id: upstream
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        run: |
+          set -euo pipefail
+          node --test scripts/lib/upstream-linux-package.test.js
+          test -z "$(CODEX_LINUX_FEATURES_CONFIG="$RUNNER_TEMP/candidate-features.json" node scripts/lib/linux-features.js --enabled)"
+          mkdir -p "upstream/${{ matrix.arch }}"
+          node scripts/lib/upstream-linux-package.js \
+            --arch "${{ matrix.arch }}" \
+            --output-dir "upstream/${{ matrix.arch }}" \
+            --metadata "upstream/${{ matrix.arch }}.json" \
+            --key-base64 assets/openai-codex-linux-repository-key.gpg.base64
+          node - "upstream/${{ matrix.arch }}.json" "$CANDIDATE_VERSION" "${{ matrix.arch }}" <<'NODE'
+          const fs = require('node:fs');
+          const [file, version, arch] = process.argv.slice(2);
+          const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+          if (m.package !== 'chatgpt' || m.version !== version ||
+              m.architecture !== arch || m.signatureVerification !== 'verified' ||
+              !/^[0-9a-f]{64}$/.test(m.sha256 || '')) {
+            throw Error('Signed candidate differs from authorized version or architecture');
+          }
+          console.log('PASS signed_official_candidate ' + version + ' ' + arch + ' ' + m.sha256);
+          NODE
+          package="upstream/${{ matrix.arch }}/chatgpt_${CANDIDATE_VERSION}_${{ matrix.arch }}.deb"
+          test -s "$package"
+          test "$(dpkg-deb -f "$package" Version)" = "$CANDIDATE_VERSION"
+          test "$(dpkg-deb -f "$package" Architecture)" = "${{ matrix.arch }}"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+      - name: Build baseline Community candidate without drifting optional patches
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        env:
+          CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/candidate-features.json
+          UPSTREAM_PACKAGE: ${{ steps.upstream.outputs.package }}
+        run: |
+          set -euo pipefail
+          make build-native-feature-helpers
+          make build-app UPSTREAM_DEB="$UPSTREAM_PACKAGE"
+      - name: Package and verify candidate without installing
+        id: archive
+        working-directory: ${{ runner.temp }}/codex-desktop-linux
+        env:
+          CODEX_LINUX_FEATURES_CONFIG: ${{ runner.temp }}/candidate-features.json
+        run: |
+          set -euo pipefail
+          export PACKAGE_VERSION="$(date -u +%Y.%m.%d).${{ github.run_number }}"
+          make deb
+          package="$(find dist -maxdepth 1 -type f -name 'codex-desktop_*_${{ matrix.arch }}.deb' -print -quit)"
+          test -n "$package"
+          test "$(dpkg-deb -f "$package" Package)" = codex-desktop
+          test "$(dpkg-deb -f "$package" Architecture)" = "${{ matrix.arch }}"
+          test "$(dpkg-deb -f "$package" Version)" = "$PACKAGE_VERSION"
+          output="$RUNNER_TEMP/candidate-${{ matrix.arch }}"
+          mkdir -p "$output"
+          cp "$package" "$output/"
+          cp "upstream/${{ matrix.arch }}.json" "$output/upstream-signed-metadata.json"
+          cp "upstream/${{ matrix.arch }}/InRelease" "$output/InRelease"
+          cp "upstream/${{ matrix.arch }}/Packages.${{ matrix.arch }}" "$output/Packages.${{ matrix.arch }}"
+          cp "$CODEX_LINUX_FEATURES_CONFIG" "$output/features.json"
+          dpkg-deb --fsys-tarfile "$package" | tar -xOf - ./opt/codex-desktop/.codex-linux/build-info.json > "$output/build-info.json"
+          node - "$output/build-info.json" "$output/upstream-signed-metadata.json" <<'NODE'
+          const fs = require('node:fs');
+          const [buildPath, metadataPath] = process.argv.slice(2);
+          const info = JSON.parse(fs.readFileSync(buildPath, 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+          if (info.source?.commit !== process.env.CANDIDATE_UPSTREAM_COMMIT ||
+              info.upstreamLinuxPackage?.version !== process.env.CANDIDATE_VERSION ||
+              info.upstreamLinuxPackage?.sha256 !== metadata.sha256 ||
+              info.upstreamLinuxPackage?.architecture !== process.env.CODEX_TARGET_ARCH ||
+              metadata.signatureVerification !== 'verified' ||
+              !Array.isArray(info.linuxFeatures?.enabled) ||
+              info.linuxFeatures.enabled.length !== 0) {
+            throw Error('Candidate source, signed package, or zero-feature isolation mismatch');
+          }
+          console.log('PASS baseline_package_provenance');
+          NODE
+          (cd "$output" && sha256sum *.deb *.json InRelease Packages.${{ matrix.arch }} > SHA256SUMS)
+          echo "artifact_dir=$output" >> "$GITHUB_OUTPUT"
+          echo 'CANDIDATE_ONLY: runtime not verified; no install, release or promotion'
+      - name: Retain candidate artifact for one day without publishing a release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: chatgpt-26.1023.51421-baseline-${{ matrix.arch }}-${{ github.run_number }}
+          path: ${{ steps.archive.outputs.artifact_dir }}
+          retention-days: 1
+          if-no-files-found: error
